@@ -2,7 +2,7 @@
 
 ## live demo
 
-## [Hexa Streaming](https://github.com/H3X44/streaming)
+[Hexa Streaming](https://github.com/H3X44/streaming)
 
 ![Hexa Logo](./images/logo.png)
 
@@ -26,18 +26,32 @@ Hexa is a modern, responsive streaming platform built with HTML, CSS, and JavaSc
 - JavaScript (ES6+)
 - React (via CDN)
 - TMDB API
+- GitHub Pages (for deployment)
 
 ## Installation
 
-1. Clone the repository:
+1. Fork this repository
+2. Clone your forked repository:
    ```
-   git clone https://github.com/H3X44/streaming-platform.git
+   git clone https://github.com/YOUR_USERNAME/streaming-platform.git
    ```
-2. Navigate to the project directory:
+3. Navigate to the project directory:
    ```
    cd streaming-platform
    ```
-3. Open `index.html` in your preferred browser or use a local server.
+4. Open `index.html` in your preferred browser or use a local server.
+
+## Deployment
+
+To deploy this project using GitHub Pages:
+
+1. Go to your repository settings on GitHub
+2. Navigate to the "Pages" section
+3. Under "Source", select the branch you want to deploy (usually `main` or `master`)
+4. Click "Save"
+5. Your site will be published at `https://YOUR_USERNAME.github.io/streaming-platform/`
+
+Note: Make sure your repository is public for GitHub Pages to work with a free account.
 
 ## Usage
 
