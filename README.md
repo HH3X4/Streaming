@@ -2,7 +2,7 @@
 
 ## live demo
 
-[Hexa Streaming](https://github.com/H3X44/streaming)
+[Hexa Streaming](https://github.com/H3X44/Streaming)
 
 ![Hexa Logo](./images/logo.png)
 
@@ -33,7 +33,7 @@ Hexa is a modern, responsive streaming platform built with HTML, CSS, and JavaSc
 1. Fork this repository
 2. Clone your forked repository:
    ```
-   git clone https://github.com/YOUR_USERNAME/streaming-platform.git
+   git clone https://github.com/HH3X4/Streaming.git
    ```
 3. Navigate to the project directory:
    ```
