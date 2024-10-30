@@ -2,7 +2,7 @@
 
 ## live demo
 
-[Hexa Streaming](https://github.com/H3X44/Streaming)
+[Hexa Streaming](https://github.com/H3X44/Streaming/)
 
 ![Hexa Logo](./images/logo.png)
 
