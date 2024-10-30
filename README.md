@@ -37,7 +37,7 @@ Hexa is a modern, responsive streaming platform built with HTML, CSS, and JavaSc
    ```
 3. Navigate to the project directory:
    ```
-   cd streaming-platform
+   cd Streaming
    ```
 4. Open `index.html` in your preferred browser or use a local server.
 
@@ -49,7 +49,7 @@ To deploy this project using GitHub Pages:
 2. Navigate to the "Pages" section
 3. Under "Source", select the branch you want to deploy (usually `main` or `master`)
 4. Click "Save"
-5. Your site will be published at `https://YOUR_USERNAME.github.io/streaming-platform/`
+5. Your site will be published at `https://HH3X4.github.io/Streaming/`
 
 Note: Make sure your repository is public for GitHub Pages to work with a free account.
 
