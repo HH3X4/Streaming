@@ -1,8 +1,6 @@
 # Hexa Streaming Platform
 
-## live demo
-
-[Hexa Streaming](https://github.com/H3X44/Streaming/)
+## [LIVE DEMO!!](https://github.com/H3X44/Streaming/)
 
 ![Hexa Logo](./images/logo.png)
 
