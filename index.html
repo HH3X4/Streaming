@@ -13,16 +13,58 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+
+    <!-- Resource hints -->
+    <link rel="preconnect" href="https://api.themoviedb.org">
+    <link rel="preconnect" href="https://image.tmdb.org">
+
+    <!-- Critical CSS inline -->
+    <style>
+        /* Add critical CSS here */
+        #clown-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: black;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 9999;
+            font-size: 150px;
+        }
+
+        #clown-overlay p {
+            margin: 0;
+            text-align: center;
+        }
+
+        #clown-overlay p:last-child {
+            font-size: 24px;
+            margin-top: 20px;
+        }
+    </style>
 </head>
 <body>
     <header>
         <nav>
-            <div class="logo">Hexa</div>
+            <div class="logo">
+                <img src="images/logo.png" alt="Hexa Logo">
+            </div>
+            <div class="search-bar">
+                <input type="text" id="search-input" placeholder="Search movies & shows...">
+                <button id="search-button">
+                    <svg width="20" height="20" viewBox="0 0 24 24">
+                        <path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                    </svg>
+                </button>
+            </div>
             <div class="nav-links">
                 <a href="#" data-page="home">Home</a>
                 <a href="#" data-page="movies">Movies</a>
                 <a href="#" data-page="series">Series</a>
-                <a href="#" data-page="watchlist">Watchlist</a>
             </div>
         </nav>
     </header>
@@ -39,6 +81,12 @@
             <div class="modal-body"></div>
         </div>
     </div>
+
+    <!-- Add this right after the <body> tag -->
+    <div id="clown-overlay" style="display: none;">
+        <p style="color: white;">🤡</p>
+        <p style="color: white;">this is open source bruv what you tryna do?</p>
+    </div>
 </body>
-<script src="script.js"></script>
+<script src="script.js" defer></script>
 </html>
