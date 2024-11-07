@@ -1,5 +1,5 @@
 const CONFIG = { baseUrl: 'https://vidlink.pro' };
-let API_KEY = localStorage.getItem('tmdb_api_key');
+const API_KEY = '8908a80d66eae13bd34f357ec5bc1db8'; // Replace with your actual API key
 const BASE_URL = 'https://api.themoviedb.org/3';
 const IMG_BASE_URL = 'https://image.tmdb.org/t/p/w500';
 const DEFAULT_POSTER = 'https://via.placeholder.com/500x750?text=No+Poster';
@@ -14,7 +14,6 @@ let currentMediaType = 'all';
 const DOM = {
   mainContent: document.getElementById('main-content'),
   modal: document.getElementById('info-modal'),
-  apiKeyInput: document.getElementById('api-key-input')
 };
 
 document.querySelectorAll('.nav-links a').forEach(link => {
@@ -47,67 +46,89 @@ async function loadContent() {
 
     if (currentSection === 'home') {
         try {
-            const [trending, topMovies, topSeries, upcoming] = await Promise.all([
+            const [
+                trending, 
+                topMovies, 
+                topSeries, 
+                upcoming,
+                popular
+            ] = await Promise.all([
                 fetch(`${BASE_URL}/trending/all/day?api_key=${API_KEY}`).then(r => r.json()),
                 fetch(`${BASE_URL}/movie/top_rated?api_key=${API_KEY}`).then(r => r.json()),
                 fetch(`${BASE_URL}/tv/top_rated?api_key=${API_KEY}`).then(r => r.json()),
-                fetch(`${BASE_URL}/movie/upcoming?api_key=${API_KEY}`).then(r => r.json())
+                fetch(`${BASE_URL}/movie/upcoming?api_key=${API_KEY}`).then(r => r.json()),
+                fetch(`${BASE_URL}/movie/popular?api_key=${API_KEY}`).then(r => r.json())
             ]);
 
             const heroItem = trending.results[Math.floor(Math.random() * trending.results.length)];
             const heroHTML = createHeroSection(heroItem);
-            const recommendationsHTML = await loadRecommendations();
             const continueWatchingHTML = createContinueWatchingSection();
+            const recommendationsHTML = await loadRecommendations();
+            const genreBasedHTML = await loadGenreBasedRecommendations();
+            const watchTimeBasedHTML = await loadWatchTimeBasedContent();
+            const popularInRegionHTML = await loadPopularInRegion();
             
             const contentHTML = `
                 ${heroHTML}
                 <div class="content-sections">
                     ${continueWatchingHTML}
                     ${recommendationsHTML}
+                    ${genreBasedHTML}
+                    ${watchTimeBasedHTML}
+                    ${popularInRegionHTML}
                     ${createContentRow('Trending Now', trending.results)}
                     ${createContentRow('Top Rated Movies', topMovies.results)}
                     ${createContentRow('Top Rated Series', topSeries.results)}
+                    ${createContentRow('Popular This Week', popular.results)}
                     ${createContentRow('Coming Soon', upcoming.results)}
                 </div>
             `;
 
             DOM.mainContent.innerHTML = contentHTML;
             initializeSliders();
-
+            
         } catch (error) {
             console.error('Error loading homepage:', error);
         }
     } else if (currentSection === 'movies' || currentSection === 'series') {
-        let url;
-        if (currentSection === 'movies') {
-            url = `${BASE_URL}/movie/popular?api_key=${API_KEY}&page=${currentPage}`;
-        } else {
-            url = `${BASE_URL}/tv/popular?api_key=${API_KEY}&page=${currentPage}`;
-        }
-
-        try {
-            const response = await fetch(url);
-            const data = await response.json();
-            
-            if (currentPage === 1) {
-                const title = currentSection === 'movies' ? 'Movies' : 'TV Series';
-                DOM.mainContent.innerHTML = `
-                    <div class="page-content">
-                        <div class="content-grid"></div>
+        const mediaType = currentSection === 'movies' ? 'movie' : 'tv';
+        
+        if (currentPage === 1) {
+            DOM.mainContent.innerHTML = `
+                <div class="page-content">
+                    <div class="page-header">
+                        <h1>${currentSection === 'movies' ? 'Movies' : 'TV Series'}</h1>
                     </div>
-                `;
-            }
-
-            const contentGrid = DOM.mainContent.querySelector('.content-grid');
-            data.results.forEach(item => {
-                const element = createContentCard(item);
-                contentGrid.appendChild(element)
+                    ${createFilterSection(mediaType)}
+                    <div class="content-grid"></div>
+                </div>
+            `;
+            
+            // Add filter event listeners
+            document.querySelectorAll('.filter-select').forEach(select => {
+                select.addEventListener('change', async () => {
+                    currentPage = 1;
+                    const contentGrid = DOM.mainContent.querySelector('.content-grid');
+                    contentGrid.innerHTML = '';
+                    const results = await applyFilters(mediaType);
+                    results.forEach(item => {
+                        item.media_type = mediaType;
+                        const element = createContentCard(item);
+                        contentGrid.appendChild(element);
+                    });
+                });
             });
-
-            currentPage++;
-        } catch (error) {
-            console.error('Error fetching data:', error);
         }
+        
+        const results = await applyFilters(mediaType);
+        const contentGrid = DOM.mainContent.querySelector('.content-grid');
+        results.forEach(item => {
+            item.media_type = mediaType;
+            const element = createContentCard(item);
+            contentGrid.appendChild(element);
+        });
+        
+        currentPage++;
     } else if (currentSection === 'series') {
         try {
             const popular = await fetch(`${BASE_URL}/tv/popular?api_key=${API_KEY}&page=${currentPage}`).then(r => r.json());
@@ -152,6 +173,8 @@ async function loadContent() {
         const genreId = document.querySelector('.page-header').dataset.genreId;
         const genreName = document.querySelector('.page-header h1').textContent;
         await loadGenreContent(genreId, genreName);
+    } else if (currentSection === 'watchlist') {
+        await loadWatchlistContent();
     }
 
     isLoading = false;
@@ -161,6 +184,9 @@ function createContentCard(item) {
     const card = document.createElement('div');
     card.className = 'content-card';
     card.setAttribute('data-id', item.id);
+    
+    const isWatchlisted = isInWatchlist(item.id);
+    const isWatchlistPage = currentSection === 'watchlist';
     
     card.innerHTML = `
         <img src="${item.poster_path ? `${IMG_BASE_URL}${item.poster_path}` : DEFAULT_POSTER}" 
@@ -172,6 +198,10 @@ function createContentCard(item) {
                 </button>
                 <button onclick="playContent(${item.id}, '${item.media_type || (item.first_air_date ? 'tv' : 'movie')}')" class="card-btn play-btn">
                     <span>▶</span>
+                </button>
+                <button onclick="${isWatchlisted ? `removeFromWatchlist(${item.id})` : `addToWatchlist(${JSON.stringify(item).replace(/"/g, '&quot;')})`}" 
+                        class="card-btn watchlist-btn ${isWatchlisted ? 'active' : ''}">
+                    <span>${isWatchlistPage ? '✕' : (isWatchlisted ? '✓' : '+')}</span>
                 </button>
             </div>
             <h3>${item.title || item.name}</h3>
@@ -586,162 +616,6 @@ function playContent(id, mediaType) {
         showPlayer('movie', id);
     } else {
         showPlayer('tv', id, 1, 1);
-    }
-}
-
-async function checkApiKey() {
-    if (!API_KEY) {
-        showApiKeyPrompt();
-        return false;
-    }
-    
-    try {
-        const response = await fetch(`${BASE_URL}/movie/popular?api_key=${API_KEY}`);
-        if (!response.ok) {
-            localStorage.removeItem('tmdb_api_key');
-            showApiKeyPrompt();
-            return false;
-        }
-        return true;
-    } catch (error) {
-        console.error('Error validating API key:', error);
-        showApiKeyPrompt();
-        return false;
-    }
-}
-
-function showApiKeyPrompt() {
-    document.body.classList.add('welcome-page');
-    document.querySelector('header').style.display = 'none';
-    
-    DOM.mainContent.innerHTML = `
-        <div class="api-key-container">
-            <div class="welcome-header">
-                <img src="images/logo.png" alt="Hexa Logo" class="welcome-logo">
-                <h1>Get Started with Hexa</h1>
-                <p class="welcome-subtitle">Your personal movie and TV show streaming companion</p>
-            </div>
-
-            <div class="welcome-features">
-                <div class="feature-item">
-                    <svg class="feature-icon" viewBox="0 0 24 24">
-                        <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm4.59-12.42L10 14.17l-2.59-2.58L6 13l4 4 8-8z"/>
-                    </svg>
-                    <span>Free Access</span>
-                </div>
-                <div class="feature-item">
-                    <svg class="feature-icon" viewBox="0 0 24 24">
-                        <path fill="currentColor" d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zM8 15c0-1.66 1.34-3 3-3 .35 0 .69.07 1 .18V6h5v2h-3v7.03c-.02 1.64-1.35 2.97-3 2.97-1.66 0-3-1.34-3-3z"/>
-                    </svg>
-                    <span>HD Streaming</span>
-                </div>
-                <div class="feature-item">
-                    <svg class="feature-icon" viewBox="0 0 24 24">
-                        <path fill="currentColor" d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                    </svg>
-                    <span>Top Rated</span>
-                </div>
-                <div class="feature-item">
-                    <svg class="feature-icon" viewBox="0 0 24 24">
-                        <path fill="currentColor" d="M19 13H5v-2h14v2z"/>
-                    </svg>
-                    <span>No Ads</span>
-                </div>
-                <div class="feature-item">
-                    <svg class="feature-icon" viewBox="0 0 24 24">
-                        <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm4.59-12.42L10 14.17l-2.59-2.58L6 13l4 4 8-8z"/>
-                    </svg>
-                    <span>100k+ Movies</span>
-                </div>
-                <div class="feature-item">
-                    <svg class="feature-icon" viewBox="0 0 24 24">
-                        <path fill="currentColor" d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zM8 15c0-1.66 1.34-3 3-3 .35 0 .69.07 1 .18V6h5v2h-3v7.03c-.02 1.64-1.35 2.97-3 2.97-1.66 0-3-1.34-3-3z"/>
-                    </svg>
-                    <span>70k+ Series</span>
-                </div>
-            </div>
-
-            <div class="api-key-section">
-                <form class="api-key-form" onsubmit="handleApiKeySubmit(event)">
-                    <input 
-                        type="text" 
-                        id="api-key-input" 
-                        placeholder="Enter your TMDB API key" 
-                        required
-                        autocomplete="off"
-                        spellcheck="false"
-                    >
-                    <button type="submit">Start Watching</button>
-                </form>
-                <div class="api-key-help">
-                    <p>Don't have an API key?</p>
-                    <ol>
-                        <li>Sign up for a free account at <a href="https://www.themoviedb.org/signup" target="_blank">TMDB</a></li>
-                        <li>Go to your <a href="https://www.themoviedb.org/settings/api" target="_blank">API settings</a></li>
-                        <li>Generate a new API key (v3 auth)</li>
-                    </ol>
-                </div>
-            </div>
-        </div>
-    `;
-    DOM.apiKeyInput = document.getElementById('api-key-input');
-}
-
-async function handleApiKeySubmit(event) {
-    event.preventDefault();
-    const input = document.getElementById('api-key-input').value.trim();
-    
-    if (!input) {
-        alert('Please enter an API key');
-        return;
-    }
-    
-    try {
-        const response = await fetch(`${BASE_URL}/movie/popular?api_key=${input}`);
-        if (!response.ok) {
-            alert('Invalid API key. Please try again.');
-            return;
-        }
-        
-        API_KEY = input;
-        localStorage.setItem('tmdb_api_key', input);
-        
-        document.body.classList.remove('welcome-page');
-        
-        currentSection = 'home';
-        await loadContent();
-        
-        document.querySelector('header').style.display = 'block';
-        
-    } catch (error) {
-        console.error('Error validating API key:', error);
-        alert('Error validating API key. Please try again.');
-    }
-}
-
-async function init() {
-    API_KEY = localStorage.getItem('tmdb_api_key');
-    
-    if (!API_KEY) {
-        showApiKeyPrompt();
-        return;
-    }
-    
-    try {
-        const response = await fetch(`${BASE_URL}/movie/popular?api_key=${API_KEY}`);
-        if (!response.ok) {
-            localStorage.removeItem('tmdb_api_key');
-            showApiKeyPrompt();
-            return;
-        }
-        
-        document.querySelector('header').style.display = 'block';
-        await loadContent();
-        
-    } catch (error) {
-        console.error('Error checking API key:', error);
-        localStorage.removeItem('tmdb_api_key');
-        showApiKeyPrompt();
     }
 }
 
@@ -1164,5 +1038,351 @@ async function loadTVGenreContent(genreId, contentGrid) {
         if (currentPage === 1) {
             contentGrid.innerHTML = '<div class="empty-results">Error loading TV shows</div>';
         }
+    }
+}
+
+// Lazy loading images
+function lazyLoadImages() {
+    const images = document.querySelectorAll('img[data-src]');
+    const imageObserver = new IntersectionObserver((entries, observer) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const img = entry.target;
+                img.src = img.dataset.src;
+                img.removeAttribute('data-src');
+                observer.unobserve(img);
+            }
+        });
+    });
+
+    images.forEach(img => imageObserver.observe(img));
+}
+
+// Content preloading
+function preloadContent(page) {
+    if (navigator.connection && navigator.connection.saveData) {
+        return; // Respect data saver mode
+    }
+    
+    const preloadPages = {
+        home: ['movies', 'series'],
+        movies: ['genres'],
+        series: ['genres']
+    };
+
+    if (preloadPages[page]) {
+        preloadPages[page].forEach(nextPage => {
+            const link = document.createElement('link');
+            link.rel = 'prefetch';
+            link.href = `api/${nextPage}.json`;
+            document.head.appendChild(link);
+        });
+    }
+}
+
+function initKeyboardNavigation() {
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && DOM.modal.style.display !== 'none') {
+            closeModal();
+        }
+        
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            const sliders = document.querySelectorAll('.content-slider'); 
+            sliders.forEach(slider => {
+                if (isElementInViewport(slider)) {
+                    slideContent(slider.parentElement.querySelector('.slider-controls'), 
+                        e.key === 'ArrowLeft' ? -1 : 1);
+                }
+            });
+        }
+    });
+}
+
+// Add to the top of script.js after other constants
+const WATCHLIST_KEY = 'hexa_watchlist';
+
+function getWatchlist() {
+    const watchlist = localStorage.getItem(WATCHLIST_KEY);
+    return watchlist ? JSON.parse(watchlist) : [];
+}
+
+function addToWatchlist(item) {
+    const watchlist = getWatchlist();
+    if (!watchlist.some(i => i.id === item.id)) {
+        const watchlistItem = {
+            id: item.id,
+            title: item.title || item.name,
+            poster_path: item.poster_path,
+            media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'),
+            added_date: Date.now(),
+            overview: item.overview,
+            vote_average: item.vote_average
+        };
+        
+        watchlist.push(watchlistItem);
+        localStorage.setItem(WATCHLIST_KEY, JSON.stringify(watchlist));
+        showToast('Added to watchlist');
+        
+        // Update button state
+        const watchlistBtn = document.querySelector(`[data-id="${item.id}"] .watchlist-btn`);
+        if (watchlistBtn) {
+            watchlistBtn.classList.add('active');
+            watchlistBtn.innerHTML = '<span>✓</span>';
+        }
+    }
+}
+
+function removeFromWatchlist(id) {
+    const watchlist = getWatchlist();
+    const updatedWatchlist = watchlist.filter(item => item.id !== id);
+    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(updatedWatchlist));
+    showToast('Removed from watchlist');
+    
+    // Update UI
+    if (currentSection === 'watchlist') {
+        loadWatchlistContent();
+    } else {
+        // Update button state
+        const watchlistBtn = document.querySelector(`[data-id="${id}"] .watchlist-btn`);
+        if (watchlistBtn) {
+            watchlistBtn.classList.remove('active');
+            watchlistBtn.innerHTML = '<span>+</span>';
+        }
+    }
+}
+
+function isInWatchlist(id) {
+    const watchlist = getWatchlist();
+    return watchlist.some(item => item.id === id);
+}
+
+async function loadWatchlistContent() {
+    currentSection = 'watchlist';
+    const watchlist = getWatchlist();
+    
+    DOM.mainContent.innerHTML = `
+        <div class="page-content">
+            <div class="page-header">
+                <h1>My Watchlist</h1>
+            </div>
+            <div class="content-grid">
+                ${watchlist.length === 0 ? `
+                    <div class="empty-results">
+                        Your watchlist is empty. Add some movies or shows!
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+    
+    if (watchlist.length > 0) {
+        const contentGrid = DOM.mainContent.querySelector('.content-grid');
+        
+        // Fetch full details for each watchlist item
+        const items = await Promise.all(
+            watchlist.map(async (item) => {
+                try {
+                    const response = await fetch(
+                        `${BASE_URL}/${item.media_type}/${item.id}?api_key=${API_KEY}`
+                    );
+                    const fullDetails = await response.json();
+                    return {
+                        ...fullDetails,
+                        media_type: item.media_type
+                    };
+                } catch (error) {
+                    console.error('Error fetching item details:', error);
+                    return item; // Fallback to stored data if fetch fails
+                }
+            })
+        );
+
+        items.forEach(item => {
+            const element = createContentCard(item);
+            contentGrid.appendChild(element);
+        });
+    }
+}
+
+function showToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    
+    const container = document.querySelector('.toast-container');
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+function createFilterSection(mediaType) {
+    return `
+        <div class="filter-section">
+            <select id="year-filter" class="filter-select">
+                <option value="">All Years</option>
+                ${generateYearOptions()}
+            </select>
+            <select id="rating-filter" class="filter-select">
+                <option value="">All Ratings</option>
+                <option value="7">7+ Rating</option>
+                <option value="8">8+ Rating</option>
+                <option value="9">9+ Rating</option>
+            </select>
+            <select id="sort-filter" class="filter-select">
+                <option value="popularity.desc">Popularity</option>
+                <option value="vote_average.desc">Rating</option>
+                <option value="release_date.desc">Release Date</option>
+            </select>
+        </div>
+    `;
+}
+
+function generateYearOptions() {
+    const currentYear = new Date().getFullYear();
+    let options = '';
+    for (let year = currentYear; year >= 1900; year--) {
+        options += `<option value="${year}">${year}</option>`;
+    }
+    return options;
+}
+
+async function applyFilters(mediaType) {
+    const year = document.getElementById('year-filter').value;
+    const rating = document.getElementById('rating-filter').value;
+    const sort = document.getElementById('sort-filter').value;
+    
+    let url = `${BASE_URL}/discover/${mediaType}?api_key=${API_KEY}&page=${currentPage}`;
+    
+    if (year) url += `&primary_release_year=${year}`;
+    if (rating) url += `&vote_average.gte=${rating}`;
+    if (sort) url += `&sort_by=${sort}`;
+    
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        return data.results;
+    } catch (error) {
+        console.error('Error applying filters:', error);
+        return [];
+    }
+}
+
+async function loadGenreBasedRecommendations() {
+    const watchHistory = JSON.parse(localStorage.getItem('vidLinkProgress') || '{}');
+    if (Object.keys(watchHistory).length === 0) return '';
+
+    // Extract genres from watch history
+    const genres = new Map();
+    Object.values(watchHistory).forEach(item => {
+        item.genres?.forEach(genre => {
+            genres.set(genre.id, (genres.get(genre.id) || 0) + 1);
+        });
+    });
+
+    // Get top genre
+    const topGenre = Array.from(genres.entries())
+        .sort((a, b) => b[1] - a[1])[0];
+
+    if (!topGenre) return '';
+
+    try {
+        const response = await fetch(
+            `${BASE_URL}/discover/movie?api_key=${API_KEY}&with_genres=${topGenre[0]}&sort_by=popularity.desc`
+        );
+        const data = await response.json();
+
+        return `
+            <div class="content-row">
+                <h2>More Like What You Watch</h2>
+                <div class="slider-wrapper">
+                    <button class="slider-controls slider-prev" onclick="slideContent(this, -1)">❮</button>
+                    <div class="content-slider">
+                        ${data.results.map(item => createContentCard(item).outerHTML).join('')}
+                    </div>
+                    <button class="slider-controls slider-next" onclick="slideContent(this, 1)">❯</button>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error loading genre recommendations:', error);
+        return '';
+    }
+}
+
+async function loadWatchTimeBasedContent() {
+    const watchHistory = JSON.parse(localStorage.getItem('vidLinkProgress') || '{}');
+    const watchTimes = Object.values(watchHistory).map(item => new Date(item.last_updated));
+    
+    // Analyze watch times to determine peak viewing hours
+    const hours = watchTimes.map(time => time.getHours());
+    const avgHour = Math.round(hours.reduce((a, b) => a + b, 0) / hours.length);
+    
+    let timeSlot = 'evening';
+    if (avgHour < 12) timeSlot = 'morning';
+    else if (avgHour < 17) timeSlot = 'afternoon';
+    else if (avgHour < 20) timeSlot = 'evening';
+    else timeSlot = 'night';
+
+    try {
+        const response = await fetch(
+            `${BASE_URL}/discover/movie?api_key=${API_KEY}&sort_by=vote_average.desc&vote_count.gte=1000`
+        );
+        const data = await response.json();
+
+        return `
+            <div class="content-row">
+                <h2>Perfect for ${timeSlot} viewing</h2>
+                <div class="slider-wrapper">
+                    <button class="slider-controls slider-prev" onclick="slideContent(this, -1)">❮</button>
+                    <div class="content-slider">
+                        ${data.results.map(item => createContentCard(item).outerHTML).join('')}
+                    </div>
+                    <button class="slider-controls slider-next" onclick="slideContent(this, 1)">❯</button>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error loading time-based content:', error);
+        return '';
+    }
+}
+
+async function loadPopularInRegion() {
+    try {
+        const region = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const country = region.split('/')[0];
+        
+        const response = await fetch(
+            `${BASE_URL}/discover/movie?api_key=${API_KEY}&region=${country}&sort_by=popularity.desc`
+        );
+        const data = await response.json();
+
+        return `
+            <div class="content-row">
+                <h2>Popular in Your Region</h2>
+                <div class="slider-wrapper">
+                    <button class="slider-controls slider-prev" onclick="slideContent(this, -1)">❮</button>
+                    <div class="content-slider">
+                        ${data.results.map(item => createContentCard(item).outerHTML).join('')}
+                    </div>
+                    <button class="slider-controls slider-next" onclick="slideContent(this, 1)">❯</button>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error loading regional content:', error);
+        return '';
+    }
+}
+
+async function init() {
+    try {
+        document.querySelector('header').style.display = 'block';
+        await loadContent();
+    } catch (error) {
+        console.error('Error initializing app:', error);
     }
 }
