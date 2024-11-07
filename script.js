@@ -1,4 +1,4 @@
-const CONFIG = { baseUrl: 'https://vidlink.pro', storageKey: 'vidLinkProgress' };
+const CONFIG = { baseUrl: 'https://vidlink.pro' };
 let API_KEY = localStorage.getItem('tmdb_api_key');
 const BASE_URL = 'https://api.themoviedb.org/3';
 const IMG_BASE_URL = 'https://image.tmdb.org/t/p/w500';
@@ -9,13 +9,14 @@ let currentPage = 1;
 let currentSection = 'home';
 let isLoading = false;
 
+let currentMediaType = 'all';
+
 const DOM = {
   mainContent: document.getElementById('main-content'),
   modal: document.getElementById('info-modal'),
   apiKeyInput: document.getElementById('api-key-input')
 };
 
-// Navigation
 document.querySelectorAll('.nav-links a').forEach(link => {
     link.addEventListener('click', (e) => {
         e.preventDefault();
@@ -33,10 +34,16 @@ function navigateTo(page) {
     loadContent();
 }
 
-// Content loading
 async function loadContent() {
     if (isLoading || !API_KEY) return;
     isLoading = true;
+
+    if (currentSection === 'genre') {
+        const genreId = document.querySelector('.page-header').dataset.genreId;
+        const genreName = document.querySelector('.page-header h1').textContent;
+        await loadGenreContent(genreId, genreName);
+        return;
+    }
 
     if (currentSection === 'home') {
         try {
@@ -47,15 +54,16 @@ async function loadContent() {
                 fetch(`${BASE_URL}/movie/upcoming?api_key=${API_KEY}`).then(r => r.json())
             ]);
 
-            // Create hero section with random trending item
             const heroItem = trending.results[Math.floor(Math.random() * trending.results.length)];
             const heroHTML = createHeroSection(heroItem);
-
-            // Create content rows
+            const recommendationsHTML = await loadRecommendations();
+            const continueWatchingHTML = createContinueWatchingSection();
+            
             const contentHTML = `
                 ${heroHTML}
                 <div class="content-sections">
-                    ${createContinueWatchingSection()}
+                    ${continueWatchingHTML}
+                    ${recommendationsHTML}
                     ${createContentRow('Trending Now', trending.results)}
                     ${createContentRow('Top Rated Movies', topMovies.results)}
                     ${createContentRow('Top Rated Series', topSeries.results)}
@@ -85,9 +93,6 @@ async function loadContent() {
                 const title = currentSection === 'movies' ? 'Movies' : 'TV Series';
                 DOM.mainContent.innerHTML = `
                     <div class="page-content">
-                        <div class="page-header">
-                            <h1>${title}</h1>
-                        </div>
                         <div class="content-grid"></div>
                     </div>
                 `;
@@ -96,7 +101,7 @@ async function loadContent() {
             const contentGrid = DOM.mainContent.querySelector('.content-grid');
             data.results.forEach(item => {
                 const element = createContentCard(item);
-                contentGrid.appendChild(element);
+                contentGrid.appendChild(element)
             });
 
             currentPage++;
@@ -105,24 +110,19 @@ async function loadContent() {
         }
     } else if (currentSection === 'series') {
         try {
-            // Fetch multiple series lists in parallel
             const popular = await fetch(`${BASE_URL}/tv/popular?api_key=${API_KEY}&page=${currentPage}`).then(r => r.json());
 
-            // Combine and filter the results
             let combinedResults = [...popular.results, ...topRated.results, ...trending.results];
             
-            // Remove duplicates
             combinedResults = Array.from(new Set(combinedResults.map(s => s.id)))
                 .map(id => combinedResults.find(s => s.id === id));
 
-            // Sort by popularity and rating
             combinedResults.sort((a, b) => {
                 const scoreA = (a.popularity * 0.4) + (a.vote_average * 0.6);
                 const scoreB = (b.popularity * 0.4) + (b.vote_average * 0.6);
                 return scoreB - scoreA;
             });
 
-            // Filter out low-rated content
             combinedResults = combinedResults.filter(show => 
                 show.vote_average >= 7.0 && 
                 show.vote_count >= 1000
@@ -131,9 +131,6 @@ async function loadContent() {
             if (currentPage === 1) {
                 DOM.mainContent.innerHTML = `
                     <div class="page-content">
-                        <div class="page-header">
-                            <h1>TV Series</h1>
-                        </div>
                         <div class="content-grid"></div>
                     </div>
                 `;
@@ -149,6 +146,12 @@ async function loadContent() {
         } catch (error) {
             console.error('Error fetching series:', error);
         }
+    } else if (currentSection === 'genres') {
+        loadGenrePage();
+    } else if (currentSection === 'genre') {
+        const genreId = document.querySelector('.page-header').dataset.genreId;
+        const genreName = document.querySelector('.page-header h1').textContent;
+        await loadGenreContent(genreId, genreName);
     }
 
     isLoading = false;
@@ -158,14 +161,10 @@ function createContentCard(item) {
     const card = document.createElement('div');
     card.className = 'content-card';
     card.setAttribute('data-id', item.id);
-    const progress = getProgressForContent(item.id);
     
     card.innerHTML = `
         <img src="${item.poster_path ? `${IMG_BASE_URL}${item.poster_path}` : DEFAULT_POSTER}" 
              alt="${item.title || item.name}">
-        ${progress && progress.progress ? `
-            <div class="progress-bar" style="width: ${(progress.progress.watched / progress.progress.duration) * 100}%"></div>
-        ` : ''}
         <div class="card-overlay">
             <div class="card-buttons">
                 <button onclick="showInfo(${item.id}, '${item.media_type || (item.first_air_date ? 'tv' : 'movie')}')" class="card-btn info-btn">
@@ -176,16 +175,12 @@ function createContentCard(item) {
                 </button>
             </div>
             <h3>${item.title || item.name}</h3>
-            ${progress && progress.type === 'tv' ? `
-                <div class="episode-info">S${progress.last_season_watched} E${progress.last_episode_watched}</div>
-            ` : ''}
         </div>
     `;
     
     return card;
 }
 
-// Infinite scroll
 function debounce(func, wait) {
   let timeout;
   return function executedFunction(...args) {
@@ -199,10 +194,17 @@ function debounce(func, wait) {
 }
 
 window.addEventListener('scroll', debounce(() => {
-  if (currentSection !== 'home' && 
-      window.innerHeight + window.scrollY >= document.body.offsetHeight - 500) {
-    loadContent();
-  }
+    if ((window.innerHeight + window.scrollY) >= document.documentElement.scrollHeight - 1000) {
+        if (!isLoading) {
+            if (currentSection === 'genre') {
+                const genreId = document.querySelector('.page-header').dataset.genreId;
+                const genreName = document.querySelector('.page-header h1').textContent;
+                loadGenreContent(genreId, genreName);
+            } else if (currentSection === 'movies' || currentSection === 'series') {
+                loadContent();
+            }
+        }
+    }
 }, 150));
 
 async function showInfo(id, mediaType) {
@@ -221,7 +223,6 @@ async function showInfo(id, mediaType) {
         const director = credits.crew.find(c => c.job === 'Director')?.name || 'N/A';
         const cast = credits.cast.slice(0, 5).map(c => c.name).join(', ');
         const year = new Date(details.release_date || details.first_air_date).getFullYear();
-        const progress = getItemProgress(id);
         
         const modalContent = document.createElement('div');
         modalContent.className = 'modal-content';
@@ -248,13 +249,6 @@ async function showInfo(id, mediaType) {
                         </div>
                         <div class="modal-actions">
                             ${createPlayButton(details, mediaType)}
-                            ${mediaType === 'tv' && progress ? `
-                                <div class="watch-progress">
-                                    <span class="progress-label">Currently on:</span>
-                                    <span class="progress-value">Season ${progress.last_season_watched}, Episode ${progress.last_episode_watched}</span>
-                                </div>
-                            ` : ''}
-                        </div>
                         <p class="modal-overview">${details.overview}</p>
                         <div class="modal-credits">
                             <div class="credit-item">
@@ -319,7 +313,6 @@ function toggleSeasonSelect(header) {
     const wrapper = header.parentElement;
     wrapper.classList.toggle('open');
     
-    // Close when clicking outside
     if (wrapper.classList.contains('open')) {
         document.addEventListener('click', function closeSelect(e) {
             if (!wrapper.contains(e.target)) {
@@ -331,18 +324,14 @@ function toggleSeasonSelect(header) {
 }
 
 async function selectSeason(option, seasonNumber, seriesId) {
-    // Update selected state
     const wrapper = option.closest('.season-select-wrapper');
     wrapper.querySelectorAll('.season-option').forEach(opt => opt.classList.remove('selected'));
     option.classList.add('selected');
     
-    // Update header text
     wrapper.querySelector('.season-select-header').textContent = `Season ${seasonNumber}`;
     
-    // Close dropdown
     wrapper.classList.remove('open');
     
-    // Load episodes
     const container = document.getElementById('episodes-container');
     container.innerHTML = '<div class="loading">Loading episodes...</div>';
     
@@ -368,7 +357,6 @@ async function loadSeasonEpisodes(seriesId, seasonNumber) {
     }
 }
 
-// Add this new function to handle season changes
 async function changeSeason(seasonNumber, seriesId) {
     const container = document.getElementById('episodes-container');
     container.innerHTML = '<div class="loading">Loading episodes...</div>';
@@ -381,7 +369,6 @@ async function changeSeason(seasonNumber, seriesId) {
     }
 }
 
-// Add this new function to handle episode toggling
 function toggleEpisodes(header) {
     const episodesContainer = header.nextElementSibling;
     const arrow = header.querySelector('.season-toggle');
@@ -391,7 +378,6 @@ function toggleEpisodes(header) {
     arrow.style.transform = isVisible ? 'rotate(0deg)' : 'rotate(180deg)';
 }
 
-// Close modal when clicking outside
 window.addEventListener('click', (e) => {
     if (e.target === DOM.modal) {
         closeModal();
@@ -473,7 +459,6 @@ function initializeSliders() {
 function restoreCardInteractions(slider) {
     slider.querySelectorAll('.content-card').forEach(card => {
         card.style.pointerEvents = 'auto';
-        // Force a repaint of the card overlay
         const overlay = card.querySelector('.card-overlay');
         if (overlay) {
             overlay.style.display = 'none';
@@ -509,15 +494,30 @@ function createPlayButton(details, mediaType) {
     if (mediaType === 'movie') {
         return `
             <button class="modal-play-btn" onclick="showPlayer('movie', ${details.id})">
-                <span></span> Play Movie
+                <span>▶</span> Play Movie
             </button>
         `;
-    } else {
-        const progress = getItemProgress(details.id);
-        const nextEpisode = getNextEpisode(details.id);
+    } else if (mediaType === 'tv') {
+        const progressData = localStorage.getItem('vidLinkProgress');
+        if (progressData) {
+            const progress = JSON.parse(progressData);
+            const showProgress = progress[details.id];
+            
+            if (showProgress) {
+                return `
+                    <button class="modal-play-btn" onclick="showPlayer('tv', ${details.id}, ${showProgress.last_season_watched}, ${showProgress.last_episode_watched})">
+                        <span>▶</span> Continue S${showProgress.last_season_watched} E${showProgress.last_episode_watched}
+                    </button>
+                    <button class="modal-play-btn secondary" onclick="showPlayer('tv', ${details.id}, 1, 1)">
+                        <span>▶</span> Start from Beginning
+                    </button>
+                `;
+            }
+        }
+        
         return `
-            <button class="modal-play-btn" onclick="showPlayer('tv', ${details.id}, ${nextEpisode.season}, ${nextEpisode.episode})">
-                <span>▶</span> ${progress ? `Continue S${nextEpisode.season} E${nextEpisode.episode}` : 'Start Watching'}
+            <button class="modal-play-btn" onclick="showPlayer('tv', ${details.id}, 1, 1)">
+                <span>▶</span> Play Series
             </button>
         `;
     }
@@ -534,6 +534,9 @@ function createEpisodePlayButton(seriesId, seasonNumber, episodeNumber) {
 function showPlayer(type, id, season = null, episode = null) {
     const mainContent = document.getElementById('main-content');
     document.body.style.overflow = 'hidden';
+    
+    // Add event listener for watch progress
+    window.addEventListener('message', handleWatchProgress);
     
     const playerHTML = `
         <div class="player-wrapper">
@@ -557,6 +560,7 @@ function showPlayer(type, id, season = null, episode = null) {
 }
 
 function closePlayer() {
+    window.removeEventListener('message', handleWatchProgress);
     const mainContent = document.getElementById('main-content');
     document.body.style.overflow = '';
     loadContent();
@@ -577,104 +581,12 @@ function getPlayerUrl(type, id, season, episode) {
     return `${playerUrl}?${params.toString()}`;
 }
 
-// Watch Progress Helper Functions
-function getWatchProgress() {
-    try {
-        const progress = localStorage.getItem(CONFIG.storageKey);
-        return progress ? JSON.parse(progress) : {};
-    } catch (error) {
-        console.error('Error parsing watch progress:', error);
-        return {};
-    }
-}
-
-function getItemProgress(id) {
-    const progress = getWatchProgress();
-    return progress[id] || null;
-}
-
-function formatProgress(progress) {
-    if (!progress) return '0%';
-    const percentage = (progress.watched / progress.duration) * 100;
-    return `${Math.round(percentage)}%`;
-}
-
-function getNextEpisode(id) {
-    const progress = getItemProgress(id);
-    if (!progress || progress.type !== 'tv') return { season: 1, episode: 1 };
-    
-    return {
-        season: parseInt(progress.last_season_watched),
-        episode: parseInt(progress.last_episode_watched)
-    };
-}
-
 function playContent(id, mediaType) {
     if (mediaType === 'movie') {
         showPlayer('movie', id);
     } else {
-        const progress = getItemProgress(id);
-        if (progress) {
-            showPlayer('tv', id, progress.last_season_watched, progress.last_episode_watched);
-        } else {
-            showPlayer('tv', id, 1, 1);
-        }
+        showPlayer('tv', id, 1, 1);
     }
-}
-
-function getContinueWatchingItems() {
-    const progress = getWatchProgress();
-    if (!progress || typeof progress !== 'object') return [];
-
-    try {
-        return Object.values(progress)
-            .filter(item => {
-                if (!item || !item.progress) return false;
-                const percentage = (item.progress.watched / item.progress.duration) * 100;
-                return percentage > 0 && percentage < 95;
-            })
-            .sort((a, b) => (b.last_updated || 0) - (a.last_updated || 0));
-    } catch (error) {
-        console.error('Error getting continue watching items:', error);
-        return [];
-    }
-}
-
-function createContinueWatchingSection() {
-    const items = getContinueWatchingItems();
-    if (items.length === 0) return '';
-    
-    return `
-        <section class="content-row continue-watching">
-            <h2>Continue Watching</h2>
-            <div class="content-slider">
-                ${items.map(item => {
-                    const cardItem = {
-                        id: item.id,
-                        title: item.title,
-                        poster_path: item.poster_path,
-                        media_type: item.type,
-                        progress: item.progress
-                    };
-                    return createContentCard(cardItem).outerHTML;
-                }).join('')}
-            </div>
-            <button class="slider-controls slider-prev" onclick="slideContent(this, -1)">
-                <div class="slider-button-bg">
-                    <svg width="24" height="24" viewBox="0 0 24 24">
-                        <path fill="currentColor" d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
-                    </svg>
-                </div>
-            </button>
-            <button class="slider-controls slider-next" onclick="slideContent(this, 1)">
-                <div class="slider-button-bg">
-                    <svg width="24" height="24" viewBox="0 0 24 24">
-                        <path fill="currentColor" d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
-                    </svg>
-                </div>
-            </button>
-        </section>
-    `;
 }
 
 async function checkApiKey() {
@@ -791,18 +703,14 @@ async function handleApiKeySubmit(event) {
             return;
         }
         
-        // Store the API key
         API_KEY = input;
         localStorage.setItem('tmdb_api_key', input);
         
-        // Remove welcome page class
         document.body.classList.remove('welcome-page');
         
-        // Reset current section and load content
         currentSection = 'home';
         await loadContent();
         
-        // Show header if it was hidden
         document.querySelector('header').style.display = 'block';
         
     } catch (error) {
@@ -811,7 +719,6 @@ async function handleApiKeySubmit(event) {
     }
 }
 
-// Initialize the app
 async function init() {
     API_KEY = localStorage.getItem('tmdb_api_key');
     
@@ -829,7 +736,6 @@ async function init() {
         }
         
         document.querySelector('header').style.display = 'block';
-        setupWatchProgressListener();
         await loadContent();
         
     } catch (error) {
@@ -857,17 +763,15 @@ function createEpisodeCard(episode, seriesId, seasonNumber) {
                 </div>
                 <button onclick="showPlayer('tv', ${seriesId}, ${seasonNumber}, ${episode.episode_number})" 
                         class="episode-play-btn">
-                    <span>▶</span>
+                    <span></span>
                 </button>
             </div>
         </div>
     `;
 }
 
-// Add to the top with other global variables
 let searchTimeout;
 
-// Add this new function
 async function handleSearch() {
     const query = document.getElementById('search-input').value.trim();
     if (!query) return;
@@ -916,120 +820,6 @@ document.getElementById('search-input').addEventListener('keypress', (e) => {
 
 document.getElementById('search-button').addEventListener('click', handleSearch);
 
-// Initialize watchProgress first
-let watchProgress = {};
-
-// Then load saved progress
-function initializeWatchProgress() {
-    try {
-        const savedProgress = localStorage.getItem(CONFIG.storageKey);
-        watchProgress = savedProgress ? JSON.parse(savedProgress) : {};
-    } catch (error) {
-        console.error('Error loading watch progress:', error);
-        watchProgress = {};
-    }
-}
-
-// Update saveProgress function
-function saveProgress(data) {
-    try {
-        localStorage.setItem(CONFIG.storageKey, JSON.stringify(data));
-        watchProgress = data;
-    } catch (error) {
-        console.error('Error saving progress:', error);
-    }
-}
-
-// Call initialization after DOM is ready
-document.addEventListener('DOMContentLoaded', initializeWatchProgress);
-
-function setupWatchProgressListener() {
-    window.addEventListener('message', (event) => {
-        if (event.origin !== CONFIG.baseUrl) return;
-
-        try {
-            if (!event.data || !event.data.type || !event.data.data) return;
-            
-            if (event.data.type === 'MEDIA_DATA') {
-                const mediaData = event.data.data;
-                if (!mediaData || typeof mediaData !== 'object' || !mediaData.id) {
-                    console.warn('Invalid media data received');
-                    return;
-                }
-
-                const currentProgress = getWatchProgress();
-                const updatedProgress = {
-                    ...currentProgress,
-                    [mediaData.id]: mediaData
-                };
-                
-                saveProgress(updatedProgress);
-                updateUIWithProgress();
-            }
-        } catch (error) {
-            console.error('Error processing watch progress:', error);
-            saveProgress({});
-        }
-    });
-}
-
-function getInProgressContent() {
-    if (!watchProgress || typeof watchProgress !== 'object') {
-        return [];
-    }
-
-    try {
-        return Object.values(watchProgress)
-            .filter(item => {
-                if (!item || !item.progress) return false;
-                const percentage = (item.progress.watched / item.progress.duration) * 100;
-                return percentage > 0 && percentage < 95;
-            })
-            .sort((a, b) => (b.last_updated || 0) - (a.last_updated || 0));
-    } catch (error) {
-        console.error('Error getting in-progress content:', error);
-        return [];
-    }
-}
-
-function getProgressForContent(id) {
-    if (!watchProgress || !id) return null;
-    return watchProgress[id] || null;
-}
-
-function updateUIWithProgress() {
-    if (!watchProgress || typeof watchProgress !== 'object') {
-        console.warn('Invalid watch progress data, resetting...');
-        watchProgress = {};
-        return;
-    }
-
-    try {
-        const cards = document.querySelectorAll('.content-card');
-        if (!cards || !cards.length) return;
-
-        cards.forEach(card => {
-            const id = card.getAttribute('data-id');
-            if (!id || !watchProgress[id] || !watchProgress[id].progress) return;
-            
-            const progress = watchProgress[id].progress;
-            if (!progress.watched || !progress.duration) return;
-            
-            let progressBar = card.querySelector('.progress-bar');
-            if (!progressBar) {
-                progressBar = document.createElement('div');
-                progressBar.className = 'progress-bar';
-                card.appendChild(progressBar);
-            }
-            
-            const percentage = Math.min((progress.watched / progress.duration) * 100, 100);
-            progressBar.style.width = `${percentage}%`;
-        });
-    } catch (error) {
-        console.error('Error updating UI progress:', error);
-    }
-}
-
 // Anti-inspect code
 (function() {
     let devtoolsOpen = false;
@@ -1040,7 +830,6 @@ function updateUIWithProgress() {
             devtoolsOpen = true;
             document.body.style.overflow = 'hidden';
             clownOverlay.style.display = 'flex';
-            // Hide all other content
             Array.from(document.body.children).forEach(child => {
                 if (child !== clownOverlay) {
                     child.style.display = 'none';
@@ -1049,7 +838,6 @@ function updateUIWithProgress() {
         }
     }
 
-    // Detect F12 and Ctrl+Shift+I
     document.addEventListener('keydown', function(e) {
         if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I')) {
             e.preventDefault();
@@ -1057,7 +845,6 @@ function updateUIWithProgress() {
         }
     });
 
-    // DevTools detection
     let element = new Image();
     Object.defineProperty(element, 'id', {
         get: function() {
@@ -1066,7 +853,6 @@ function updateUIWithProgress() {
         }
     });
 
-    // Size-based detection
     const checkDevTools = () => {
         if (window.outerHeight - window.innerHeight > 200 || 
             window.outerWidth - window.innerWidth > 200) {
@@ -1076,9 +862,307 @@ function updateUIWithProgress() {
 
     setInterval(checkDevTools, 1000);
 })();
-// Initial load
+
 loadContent();
 
-// Add this at the very end of script.js
 document.addEventListener('DOMContentLoaded', init);
 
+function handleWatchProgress(event) {
+    if (event.origin !== 'https://vidlink.pro') {
+        return;
+    }
+
+    if (event.data && event.data.type === 'MEDIA_DATA') {
+        const mediaData = event.data.data;
+        localStorage.setItem('vidLinkProgress', JSON.stringify(mediaData));
+        updateContinueWatchingSection();
+    }
+}
+
+function createContinueWatchingSection() {
+    const progressData = localStorage.getItem('vidLinkProgress');
+    if (!progressData) return '';
+
+    const progress = JSON.parse(progressData);
+    const items = Object.values(progress)
+        .sort((a, b) => b.last_updated - a.last_updated)
+        .slice(0, 10); // Show only last 10 items
+
+    if (items.length === 0) return '';
+
+    return `
+        <div class="content-row">
+            <h2>Continue Watching</h2>
+            <div class="slider-wrapper">
+                <button class="slider-controls slider-prev" onclick="slideContent(this, -1)">❮</button>
+                <div class="content-slider">
+                    ${items.map(item => createProgressCard(item)).join('')}
+                </div>
+                <button class="slider-controls slider-next" onclick="slideContent(this, 1)">❯</button>
+            </div>
+        </div>
+    `;
+}
+
+function createProgressCard(item) {
+    const progress = item.type === 'tv' 
+        ? (parseInt(item.last_episode_watched) / item.number_of_episodes) * 100
+        : (item.progress.watched / item.progress.duration) * 100;
+
+    const card = document.createElement('div');
+    card.className = 'content-card';
+    card.setAttribute('data-id', item.id);
+    
+    card.innerHTML = `
+        <img src="${item.poster_path ? `${IMG_BASE_URL}${item.poster_path}` : DEFAULT_POSTER}" 
+             alt="${item.title}">
+        <div class="card-overlay">
+            <div class="progress-bar">
+                <div class="progress" style="width: ${Math.min(progress, 100)}%"></div>
+            </div>
+            <div class="card-buttons">
+                <button onclick="showInfo(${item.id}, '${item.type}')" class="card-btn info-btn">
+                    <span>ℹ️</span>
+                </button>
+                <button onclick="resumeContent(${item.id}, '${item.type}')" class="card-btn play-btn">
+                    <span>▶</span>
+                </button>
+            </div>
+            <h3>${item.title}</h3>
+            ${item.type === 'tv' ? `<p>S${item.last_season_watched} E${item.last_episode_watched}</p>` : ''}
+        </div>
+    `;
+    
+    return card.outerHTML;
+}
+
+function resumeContent(id, type) {
+    const progressData = JSON.parse(localStorage.getItem('vidLinkProgress'));
+    const item = progressData[id];
+    
+    if (type === 'tv') {
+        showPlayer('tv', id, item.last_season_watched, item.last_episode_watched);
+    } else {
+        showPlayer('movie', id);
+    }
+}
+
+function updateContinueWatchingSection() {
+    const continueWatchingRow = document.querySelector('.content-row:first-child');
+    if (continueWatchingRow) {
+        const newContinueWatchingHTML = createContinueWatchingSection();
+        if (newContinueWatchingHTML) {
+            continueWatchingRow.outerHTML = newContinueWatchingHTML;
+            initializeSliders();
+        } else {
+            continueWatchingRow.remove();
+        }
+    } else if (document.querySelector('.content-sections')) {
+        const newContinueWatchingHTML = createContinueWatchingSection();
+        if (newContinueWatchingHTML) {
+            const contentSections = document.querySelector('.content-sections');
+            contentSections.insertAdjacentHTML('afterbegin', newContinueWatchingHTML);
+            initializeSliders();
+        }
+    }
+}
+
+async function loadRecommendations() {
+    const progressData = localStorage.getItem('vidLinkProgress');
+    if (!progressData) return '';
+
+    const progress = JSON.parse(progressData);
+    const lastWatched = Object.values(progress)
+        .sort((a, b) => b.last_updated - a.last_updated)[0];
+
+    if (!lastWatched) return '';
+
+    try {
+        const response = await fetch(
+            `${BASE_URL}/${lastWatched.type}/${lastWatched.id}/recommendations?api_key=${API_KEY}`
+        );
+        const data = await response.json();
+        
+        if (data.results.length === 0) return '';
+
+        return `
+            <div class="content-row">
+                <h2>Because You Watched ${lastWatched.title}</h2>
+                <div class="slider-wrapper">
+                    <button class="slider-controls slider-prev" onclick="slideContent(this, -1)">❮</button>
+                    <div class="content-slider">
+                        ${data.results.map(item => createContentCard(item).outerHTML).join('')}
+                    </div>
+                    <button class="slider-controls slider-next" onclick="slideContent(this, 1)">❯</button>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error loading recommendations:', error);
+        return '';
+    }
+}
+
+async function loadGenrePage() {
+    try {
+        const [movieGenres, tvGenres] = await Promise.all([
+            fetch(`${BASE_URL}/genre/movie/list?api_key=${API_KEY}`).then(r => r.json()),
+            fetch(`${BASE_URL}/genre/tv/list?api_key=${API_KEY}`).then(r => r.json())
+        ]);
+
+        const genreCardsHTML = `
+            <div class="page-content genres-page">
+                <div class="genre-type-tabs">
+                    <button class="genre-tab active" data-type="movies">Movies</button>
+                    <button class="genre-tab" data-type="tv">TV Shows</button>
+                </div>
+                <div class="genres-container">
+                    <div class="genre-section movies active" id="movies-genres">
+                        <div class="genres-grid">
+                            ${movieGenres.genres.map(genre => `
+                                <div class="genre-card" onclick="showGenreContent(${genre.id}, '${genre.name}', 'movie')">
+                                    <h3>${genre.name}</h3>
+                                    <div class="genre-count">Movies</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div class="genre-section tv" id="tv-genres">
+                        <div class="genres-grid">
+                            ${tvGenres.genres.map(genre => `
+                                <div class="genre-card" onclick="showGenreContent(${genre.id}, '${genre.name}', 'tv')">
+                                    <h3>${genre.name}</h3>
+                                    <div class="genre-count">TV Shows</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        DOM.mainContent.innerHTML = genreCardsHTML;
+
+        // Add tab switching functionality
+        document.querySelectorAll('.genre-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.genre-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.genre-section').forEach(s => s.classList.remove('active'));
+                
+                tab.classList.add('active');
+                const type = tab.dataset.type;
+                document.getElementById(`${type}-genres`).classList.add('active');
+            });
+        });
+
+    } catch (error) {
+        console.error('Error loading genres:', error);
+        DOM.mainContent.innerHTML = `
+            <div class="page-content">
+                <div class="empty-results">Error loading genres. Please try again.</div>
+            </div>
+        `;
+    }
+}
+
+async function showGenreContent(genreId, genreName, mediaType) {
+    currentSection = 'genre';
+    currentPage = 1;
+    currentMediaType = mediaType;
+    
+    try {
+        DOM.mainContent.innerHTML = `
+            <div class="page-content">
+                <div class="page-header" data-genre-id="${genreId}">
+                    <h1>${genreName}</h1>
+                    <button class="back-btn" onclick="loadGenrePage()">
+                        <span>←</span> Back to Genres
+                    </button>
+                </div>
+                <div class="content-grid"></div>
+            </div>
+        `;
+
+        await loadGenreContent(genreId, genreName);
+    } catch (error) {
+        console.error('Error loading genre content:', error);
+    }
+}
+
+async function loadGenreContent(genreId, genreName) {
+    if (isLoading) return;
+    isLoading = true;
+
+    try {
+        const contentGrid = document.querySelector('.content-grid');
+        
+        if (currentMediaType === 'movie') {
+            await loadMovieGenreContent(genreId, contentGrid);
+        } else {
+            await loadTVGenreContent(genreId, contentGrid);
+        }
+
+        isLoading = false;
+    } catch (error) {
+        console.error('Error loading genre content:', error);
+        isLoading = false;
+    }
+}
+
+async function loadMovieGenreContent(genreId, contentGrid) {
+    try {
+        const response = await fetch(
+            `${BASE_URL}/discover/movie?api_key=${API_KEY}&with_genres=${genreId}&page=${currentPage}`
+        );
+        const data = await response.json();
+        
+        if (data.results.length === 0) {
+            if (currentPage === 1) {
+                contentGrid.innerHTML = '<div class="empty-results">No movies found in this genre</div>';
+            }
+            return;
+        }
+
+        data.results.forEach(item => {
+            item.media_type = 'movie';
+            const element = createContentCard(item);
+            contentGrid.appendChild(element);
+        });
+
+        currentPage++;
+    } catch (error) {
+        console.error('Error loading movie genre content:', error);
+        if (currentPage === 1) {
+            contentGrid.innerHTML = '<div class="empty-results">Error loading movies</div>';
+        }
+    }
+}
+
+async function loadTVGenreContent(genreId, contentGrid) {
+    try {
+        const response = await fetch(
+            `${BASE_URL}/discover/tv?api_key=${API_KEY}&with_genres=${genreId}&page=${currentPage}`
+        );
+        const data = await response.json();
+        
+        if (data.results.length === 0) {
+            if (currentPage === 1) {
+                contentGrid.innerHTML = '<div class="empty-results">No TV shows found in this genre</div>';
+            }
+            return;
+        }
+
+        data.results.forEach(item => {
+            item.media_type = 'tv';
+            const element = createContentCard(item);
+            contentGrid.appendChild(element);
+        });
+
+        currentPage++;
+    } catch (error) {
+        console.error('Error loading TV genre content:', error);
+        if (currentPage === 1) {
+            contentGrid.innerHTML = '<div class="empty-results">Error loading TV shows</div>';
+        }
+    }
+}
