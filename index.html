@@ -46,6 +46,9 @@
             margin-top: 20px;
         }
     </style>
+
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#6366f1">
 </head>
 <body>
     <header>
@@ -66,9 +69,15 @@
                 <a href="#" data-page="movies">Movies</a>
                 <a href="#" data-page="series">Series</a>
                 <a href="#" data-page="genres">Genres</a>
+                <a href="#" data-page="watchlist">Watchlist</a>
             </div>
         </nav>
     </header>
+
+    <!-- Add this right after the header -->
+    <div id="loading-indicator" class="loading-indicator">
+        <div class="spinner"></div>
+    </div>
 
     <main id="main-content">
         <!-- Content will be dynamically inserted here -->
@@ -82,6 +91,9 @@
             <div class="modal-body"></div>
         </div>
     </div>
+
+    <!-- Add this before closing body -->
+    <div id="toast-container" class="toast-container"></div>
 
     <!-- Add this right after the <body> tag -->
     <div id="clown-overlay" style="display: none;">
