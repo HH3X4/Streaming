@@ -1,5 +1,5 @@
 const { useState, useEffect, useRef, useCallback } = React;
-        const { HashRouter, Route, Link, Switch, useParams } = ReactRouterDOM;
+        const { BrowserRouter, Route, Link, Switch, useParams } = ReactRouterDOM;
 
         const axios = axios;
         const API_KEY = '8908a80d66eae13bd34f357ec5bc1db8';
@@ -33,13 +33,14 @@ const { useState, useEffect, useRef, useCallback } = React;
 
         function App() {
             return (
-                <HashRouter basename="/">
+                <BrowserRouter>
                     <WatchlistProvider>
                         <div className="min-h-screen bg-gray-900 text-white">
                             <Header />
                             <main className="container mx-auto px-4 py-6">
                                 <Switch>
                                     <Route exact path="/" component={Home} />
+                                    <Route exact path="/home" component={Home} />
                                     <Route exact path="/search" component={Search} />
                                     <Route exact path="/movies" component={MovieList} />
                                     <Route exact path="/tv" component={TVShowList} />
@@ -52,7 +53,7 @@ const { useState, useEffect, useRef, useCallback } = React;
                             <Footer />
                         </div>
                     </WatchlistProvider>
-                </HashRouter>
+                </BrowserRouter>
             );
         }
 
