@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <title>Redirecting...</title>
     <script>
-        sessionStorage.redirect = location.href;
-        location.replace(location.origin + '/#' + location.pathname + location.search);
+        const segment = window.location.pathname;
+        window.location.replace(`/?path=${segment}`);
     </script>
 </head>
 <body>
