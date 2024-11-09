@@ -1,5 +1,5 @@
 const { useState, useEffect, useRef, useCallback } = React;
-        const { BrowserRouter, Route, Link, Switch, useParams } = ReactRouterDOM;
+        const { HashRouter, Route, Link, Switch, useParams } = ReactRouterDOM;
 
         const axios = axios;
         const API_KEY = '8908a80d66eae13bd34f357ec5bc1db8';
@@ -33,7 +33,7 @@ const { useState, useEffect, useRef, useCallback } = React;
 
         function App() {
             return (
-                <BrowserRouter>
+                <HashRouter basename="/">
                     <WatchlistProvider>
                         <div className="min-h-screen bg-gray-900 text-white">
                             <Header />
@@ -52,7 +52,7 @@ const { useState, useEffect, useRef, useCallback } = React;
                             <Footer />
                         </div>
                     </WatchlistProvider>
-                </BrowserRouter>
+                </HashRouter>
             );
         }
 
@@ -126,7 +126,11 @@ const { useState, useEffect, useRef, useCallback } = React;
                             {sections[sectionKey] && sections[sectionKey].map(item => (
                                 <MovieCard 
                                     key={item.id} 
-                                    item={item} 
+                                    item={{
+                                        ...item,
+                                        name: item.name || item.title,
+                                        title: item.title || item.name,
+                                    }}
                                     type={getContentType(sectionKey, item)}
                                 />
                             ))}
@@ -487,8 +491,9 @@ const { useState, useEffect, useRef, useCallback } = React;
 
             return (
                 <div className="min-h-screen bg-gray-900">
+                    {/* Hero Section with Backdrop */}
                     <div className="relative">
-                        <div className="absolute inset-0 h-[80vh]">
+                        <div className="absolute inset-0 h-[90vh]">
                             <img 
                                 src={`https://image.tmdb.org/t/p/original${movie.backdrop_path}`}
                                 alt={movie.title}
@@ -500,22 +505,28 @@ const { useState, useEffect, useRef, useCallback } = React;
 
                         <div className="relative pt-40 pb-20 px-4 container mx-auto">
                             <div className="flex flex-col md:flex-row gap-12">
+                                {/* Left Column - Poster and Actions */}
                                 <div className="w-full md:w-1/3">
-                                    <div className="sticky top-24">
-                                        <div className="premium-card rounded-xl overflow-hidden">
+                                    <div className="sticky top-24 space-y-6">
+                                        <div className="premium-card rounded-xl overflow-hidden shadow-2xl shadow-blue-500/10">
                                             <img 
                                                 src={`${IMG_BASE_URL}${movie.poster_path}`}
                                                 alt={movie.title}
-                                                className="w-full rounded-xl shadow-2xl hover:scale-105 transition-transform duration-500"
+                                                className="w-full rounded-xl hover:scale-105 transition-transform duration-500"
                                             />
                                         </div>
-                                        <div className="flex flex-col gap-4 mt-6">
+                                        
+                                        {/* Action Buttons */}
+                                        <div className="flex flex-col gap-4">
                                             <button 
                                                 onClick={() => setShowPlayer(true)}
-                                                className="w-full py-4 text-lg font-semibold bg-gradient-to-r from-[#00f2fe] to-[#4facfe] text-white rounded-xl hover:shadow-lg hover:shadow-[#4facfe]/20 transition-all duration-300 hover:scale-105 flex items-center justify-center gap-2"
+                                                className="w-full py-4 text-lg font-semibold bg-gradient-to-r from-[#00f2fe] to-[#4facfe] text-white rounded-xl 
+                                                    hover:shadow-lg hover:shadow-[#4facfe]/20 transition-all duration-300 hover:scale-105 
+                                                    flex items-center justify-center gap-2"
                                             >
                                                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                                        d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                 </svg>
                                                 Play Movie
@@ -525,85 +536,68 @@ const { useState, useEffect, useRef, useCallback } = React;
                                                 className="w-full py-4 text-lg font-semibold premium-glass rounded-xl hover:scale-105 transition-all duration-300" 
                                             />
                                         </div>
+
+                                        {/* Movie Info Cards */}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="premium-glass rounded-xl p-4 text-center">
+                                                <p className="text-gray-400 text-sm">Rating</p>
+                                                <p className="text-white font-semibold mt-1">
+                                                    {movie.vote_average ? movie.vote_average.toFixed(1) : 'N/A'}
+                                                </p>
+                                            </div>
+                                            <div className="premium-glass rounded-xl p-4 text-center">
+                                                <p className="text-gray-400 text-sm">Runtime</p>
+                                                <p className="text-white font-semibold mt-1">
+                                                    {movie.runtime} min
+                                                </p>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
+                                {/* Right Column - Content */}
                                 <div className="w-full md:w-2/3 text-white space-y-8">
                                     <div className="space-y-4">
+                                        <div className="flex items-center gap-3 text-sm">
+                                            <span className="px-2 py-1 rounded-md bg-white/10">
+                                                {new Date(movie.release_date).getFullYear()}
+                                            </span>
+                                            {movie.genres && movie.genres.map(genre => (
+                                                <span key={genre.id} className="px-2 py-1 rounded-md bg-white/10">
+                                                    {genre.name}
+                                                </span>
+                                            ))}
+                                        </div>
+
                                         <h1 className="text-6xl font-bold text-gradient-animated leading-tight">
                                             {movie.title}
                                         </h1>
-                                        {getWatchProgress(movie.id, 'movie') !== null && (
+
+                                        {/* Progress Bar */}
+                                        {getWatchProgress(movie.id) !== null && (
                                             <div className="flex items-center gap-4">
                                                 <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
                                                     <div 
                                                         className="h-full bg-gradient-to-r from-[#00f2fe] to-[#4facfe]"
-                                                        style={{ width: `${getWatchProgress(movie.id, 'movie')}%` }}
+                                                        style={{ width: `${getWatchProgress(movie.id)}%` }}
                                                     />
                                                 </div>
                                                 <span className="text-gray-400">
-                                                    {Math.round(getWatchProgress(movie.id, 'movie'))}% watched
+                                                    {Math.round(getWatchProgress(movie.id))}% watched
                                                 </span>
                                             </div>
                                         )}
                                     </div>
 
-                                    <p className="text-xl text-gray-300 leading-relaxed">{movie.overview}</p>
-
-                                    <div className="space-y-4">
-                                        <h3 className="text-2xl font-semibold">Genres</h3>
-                                        <div className="flex flex-wrap gap-3">
-                                            {movie.genres.map(genre => (
-                                                <span 
-                                                    key={genre.id}
-                                                    className="px-6 py-3 rounded-full premium-glass text-sm font-medium hover:scale-110 transition-transform duration-300"
-                                                >
-                                                    {genre.name}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-6">
-                                        <h3 className="text-2xl font-semibold">Cast</h3>
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-                                            {cast.map(actor => (
-                                                <div key={actor.id} className="premium-card rounded-xl overflow-hidden group">
-                                                    <div className="relative aspect-[2/3]">
-                                                        <img 
-                                                            src={actor.profile_path 
-                                                                ? `${IMG_BASE_URL}${actor.profile_path}`
-                                                                : 'placeholder-image.jpg'
-                                                            }
-                                                            alt={actor.name}
-                                                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                                                        />
-                                                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                                            <div className="absolute bottom-0 p-4 w-full">
-                                                                <p className="font-medium text-white">{actor.name}</p>
-                                                                <p className="text-sm text-gray-400">{actor.character}</p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {similar.length > 0 && (
-                                        <div className="space-y-6">
-                                            <h3 className="text-2xl font-semibold">Similar Movies</h3>
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-6">
-                                                {similar.map(movie => (
-                                                    <MovieCard key={movie.id} item={movie} type="movie" />
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
+                                    <p className="text-xl text-gray-300 leading-relaxed">
+                                        {movie.overview}
+                                    </p>
                                 </div>
                             </div>
                         </div>
                     </div>
+                    
+                    {/* Video Player Modal */}
                     {showPlayer && (
                         <VideoPlayer 
                             type="movie"
@@ -658,9 +652,10 @@ const { useState, useEffect, useRef, useCallback } = React;
             }
 
             return (
-                <div className="min-h-screen">
+                <div className="min-h-screen bg-gray-900">
+                    {/* Hero Section */}
                     <div className="relative">
-                        <div className="absolute inset-0 h-[80vh]">
+                        <div className="absolute inset-0 h-[90vh]">
                             <img 
                                 src={`https://image.tmdb.org/t/p/original${show.backdrop_path}`}
                                 alt={show.name}
@@ -671,78 +666,74 @@ const { useState, useEffect, useRef, useCallback } = React;
                         </div>
 
                         <div className="relative pt-40 pb-20 px-4 container mx-auto">
-                            <div className="flex flex-col md:flex-row gap-12">
-                                {/* Poster and Info */}
-                                <div className="w-full md:w-1/3">
+                            <div className="flex flex-col lg:flex-row gap-12">
+                                {/* Left Sidebar */}
+                                <div className="w-full lg:w-1/4">
                                     <div className="sticky top-24 space-y-6">
-                                        <div className="premium-card rounded-xl overflow-hidden">
+                                        <div className="premium-card rounded-xl overflow-hidden shadow-2xl shadow-blue-500/10">
                                             <img 
                                                 src={`${IMG_BASE_URL}${show.poster_path}`}
                                                 alt={show.name}
-                                                className="w-full rounded-xl shadow-2xl hover:scale-105 transition-transform duration-500"
+                                                className="w-full rounded-xl hover:scale-105 transition-transform duration-500"
                                             />
                                         </div>
+                                        
                                         <WatchlistButton 
                                             item={{...show, media_type: 'tv'}} 
                                             className="w-full py-4 text-lg font-semibold premium-glass rounded-xl hover:scale-105 transition-all duration-300" 
                                         />
-                                        
-                                        {/* Show Info */}
-                                        <div className="premium-glass rounded-xl p-6 space-y-4">
-                                            <div className="space-y-2">
-                                                <h3 className="text-lg font-semibold">Status</h3>
-                                                <p className="text-gray-300">{show.status}</p>
+
+                                        {/* Show Stats */}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="premium-glass rounded-xl p-4 text-center">
+                                                <p className="text-gray-400 text-sm">Rating</p>
+                                                <p className="text-white font-semibold mt-1">
+                                                    {formatRating(show.vote_average)}
+                                                </p>
                                             </div>
-                                            <div className="space-y-2">
-                                                <h3 className="text-lg font-semibold">Network</h3>
-                                                <div className="flex items-center gap-4">
-                                                    {show.networks && show.networks.map(network => (
-                                                        <img 
-                                                            key={network.id}
-                                                            src={`${IMG_BASE_URL}${network.logo_path}`}
-                                                            alt={network.name}
-                                                            className="h-8 object-contain"
-                                                        />
-                                                    ))}
-                                                </div>
+                                            <div className="premium-glass rounded-xl p-4 text-center">
+                                                <p className="text-gray-400 text-sm">Episodes</p>
+                                                <p className="text-white font-semibold mt-1">
+                                                    {show.number_of_episodes}
+                                                </p>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Content */}
-                                <div className="w-full md:w-2/3 text-white space-y-8">
+                                {/* Main Content */}
+                                <div className="w-full lg:w-3/4 text-white space-y-8">
+                                    {/* Show Title & Info */}
                                     <div className="space-y-4">
-                                        <h1 className="text-6xl font-bold text-gradient-animated leading-tight">
-                                            {show.name}
-                                        </h1>
-                                        <div className="flex flex-wrap items-center gap-4 text-lg">
-                                            <span className="px-4 py-2 rounded-full premium-glass">
+                                        <div className="flex items-center gap-3 text-sm flex-wrap">
+                                            <span className="px-2 py-1 rounded-md bg-white/10">
                                                 {new Date(show.first_air_date).getFullYear()}
                                             </span>
-                                            <span className="px-4 py-2 rounded-full premium-glass">
-                                                {show.number_of_seasons} Seasons
-                                            </span>
-                                            <span className="flex items-center px-4 py-2 rounded-full premium-glass text-yellow-400">
-                                                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                                </svg>
-                                                {formatRating(show.vote_average)}
-                                            </span>
+                                            {show.genres && show.genres.map(genre => (
+                                                <span key={genre.id} className="px-2 py-1 rounded-md bg-white/10">
+                                                    {genre.name}
+                                                </span>
+                                            ))}
                                         </div>
+
+                                        <h1 className="text-5xl font-bold text-gradient-animated leading-tight">
+                                            {show.name}
+                                        </h1>
+
+                                        <p className="text-xl text-gray-300 leading-relaxed">
+                                            {show.overview}
+                                        </p>
                                     </div>
 
-                                    <p className="text-xl text-gray-300 leading-relaxed">{show.overview}</p>
-
-                                    {/* Seasons selector */}
+                                    {/* Season Selector */}
                                     <div className="space-y-4">
-                                        <h3 className="text-2xl font-semibold">Seasons</h3>
-                                        <div className="flex space-x-4 overflow-x-auto pb-4 premium-scrollbar">
+                                        <h2 className="text-2xl font-semibold">Seasons</h2>
+                                        <div className="flex gap-3 overflow-x-auto pb-4 premium-scrollbar">
                                             {Array.from({ length: show.number_of_seasons }, (_, i) => i + 1).map(season => (
                                                 <button
                                                     key={season}
                                                     onClick={() => setSelectedSeason(season)}
-                                                    className={`px-8 py-4 rounded-xl transition-all duration-300 ${
+                                                    className={`flex-shrink-0 px-6 py-3 rounded-xl transition-all duration-300 ${
                                                         selectedSeason === season
                                                             ? 'bg-gradient-to-r from-[#00f2fe] to-[#4facfe] text-white shadow-lg shadow-[#4facfe]/20'
                                                             : 'premium-glass text-gray-400 hover:text-white'
@@ -754,28 +745,32 @@ const { useState, useEffect, useRef, useCallback } = React;
                                         </div>
                                     </div>
 
-                                    {/* Episodes list */}
+                                    {/* Episodes Grid */}
                                     {seasonDetails && (
                                         <div className="space-y-6">
-                                            <h3 className="text-2xl font-semibold">Episodes</h3>
-                                            <div className="grid gap-6">
+                                            <h2 className="text-2xl font-semibold">Episodes</h2>
+                                            <div className="grid gap-4">
                                                 {seasonDetails.episodes.map(episode => (
-                                                    <div key={episode.id} className="premium-glass rounded-xl p-6 hover:scale-[1.02] transition-transform duration-300">
-                                                        <div className="flex gap-6">
-                                                            <div className="relative">
+                                                    <div key={episode.id} 
+                                                        className="premium-glass rounded-xl overflow-hidden hover:scale-[1.01] transition-transform duration-300"
+                                                    >
+                                                        <div className="flex flex-col md:flex-row gap-6 p-4">
+                                                            <div className="relative md:w-64 flex-shrink-0">
                                                                 {episode.still_path ? (
                                                                     <img 
                                                                         src={`${IMG_BASE_URL}${episode.still_path}`}
                                                                         alt={episode.name}
-                                                                        className="w-64 h-36 object-cover rounded-lg"
+                                                                        className="w-full aspect-video object-cover rounded-lg"
                                                                     />
                                                                 ) : (
-                                                                    <div className="w-64 h-36 bg-gray-800 rounded-lg flex items-center justify-center">
+                                                                    <div className="w-full aspect-video bg-gray-800 rounded-lg flex items-center justify-center">
                                                                         <span className="text-gray-500">No Preview</span>
                                                                     </div>
                                                                 )}
+                                                                
+                                                                {/* Episode Progress Bar */}
                                                                 {getEpisodeProgress(show.id, selectedSeason, episode.episode_number) && (
-                                                                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800">
+                                                                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800/50 backdrop-blur-sm">
                                                                         <div 
                                                                             className="h-full bg-gradient-to-r from-[#00f2fe] to-[#4facfe]"
                                                                             style={{ 
@@ -785,34 +780,36 @@ const { useState, useEffect, useRef, useCallback } = React;
                                                                     </div>
                                                                 )}
                                                             </div>
+                                                            
                                                             <div className="flex-1 space-y-3">
-                                                                <div className="flex items-center justify-between mb-4">
+                                                                <div className="flex items-center justify-between gap-4 flex-wrap">
                                                                     <h3 className="text-xl font-semibold">
                                                                         {episode.episode_number}. {episode.name}
                                                                     </h3>
-                                                                    <div className="flex items-center gap-4">
-                                                                        {getEpisodeProgress(show.id, selectedSeason, episode.episode_number) !== null && (
-                                                                            <span className="text-sm text-gray-400">
-                                                                                {Math.round(getEpisodeProgress(show.id, selectedSeason, episode.episode_number))}% watched
-                                                                            </span>
-                                                                        )}
-                                                                        <button 
-                                                                            onClick={() => setShowPlayer({ season: selectedSeason, episode: episode.episode_number })}
-                                                                            className="px-4 py-2 rounded-full bg-gradient-to-r from-[#00f2fe] to-[#4facfe] text-white font-semibold hover:shadow-lg hover:shadow-[#4facfe]/20 transition-all duration-300 transform hover:scale-105"
-                                                                        >
-                                                                            <span className="flex items-center space-x-2">
-                                                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                                                </svg>
-                                                                                <span>Play</span>
-                                                                            </span>
-                                                                        </button>
-                                                                    </div>
+                                                                    <button 
+                                                                        onClick={() => setShowPlayer({ season: selectedSeason, episode: episode.episode_number })}
+                                                                        className="px-6 py-2 rounded-full bg-gradient-to-r from-[#00f2fe] to-[#4facfe] 
+                                                                            text-white font-semibold hover:shadow-lg hover:shadow-[#4facfe]/20 
+                                                                            transition-all duration-300 transform hover:scale-105
+                                                                            flex items-center gap-2"
+                                                                    >
+                                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                                                                d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                                                        </svg>
+                                                                        Play
+                                                                    </button>
                                                                 </div>
+                                                                
                                                                 <p className="text-gray-300">{episode.overview || "No description available."}</p>
-                                                                <div className="text-sm text-gray-400">
-                                                                    Air Date: {new Date(episode.air_date).toLocaleDateString()}
+                                                                
+                                                                <div className="flex items-center gap-4 text-sm text-gray-400">
+                                                                    <span>{new Date(episode.air_date).toLocaleDateString()}</span>
+                                                                    {getEpisodeProgress(show.id, selectedSeason, episode.episode_number) !== null && (
+                                                                        <span>
+                                                                            {Math.round(getEpisodeProgress(show.id, selectedSeason, episode.episode_number))}% watched
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -837,6 +834,8 @@ const { useState, useEffect, useRef, useCallback } = React;
                             </div>
                         </div>
                     </div>
+
+                    {/* Video Player */}
                     {showPlayer && (
                         <VideoPlayer 
                             type="tv"
@@ -885,34 +884,30 @@ const { useState, useEffect, useRef, useCallback } = React;
         function MovieCard({ item, type }) {
             const [isHovered, setIsHovered] = useState(false);
             
-            // Reference to existing media type logic
-            let mediaType;
-            if (type === 'both') {
-                mediaType = item.first_air_date || item.episode_run_time ? 'tv' : 'movie';
-            } else {
-                mediaType = type || item.media_type || (item.first_air_date ? 'tv' : 'movie');
-            }
-
-            const path = `/${mediaType}/${item.id}`;
             const formatRating = (rating) => rating ? rating.toFixed(1) : 'N/A';
-
-            // Get watch progress
+            
+            // Use the existing getContentType function to determine media type
+            const mediaType = type || item.media_type || (item.first_air_date ? 'tv' : 'movie');
+            
+            // Calculate progress percentage
             const progress = JSON.parse(localStorage.getItem('vidLinkProgress') || '{}');
             const itemProgress = progress[item.id];
             
             let progressPercentage = null;
-            if (itemProgress) {
+            if (itemProgress && itemProgress.progress) {
                 if (mediaType === 'movie') {
-                    progressPercentage = (itemProgress.progress.watched / itemProgress.progress.duration) * 100;
-                } else if (mediaType === 'tv' && itemProgress.show_progress) {
-                    const lastEpisodeKey = `s${itemProgress.last_season_watched}e${itemProgress.last_episode_watched}`;
-                    const lastEpisodeProgress = itemProgress.show_progress[lastEpisodeKey];
-                    if (lastEpisodeProgress) {
-                        progressPercentage = (lastEpisodeProgress.progress.watched / lastEpisodeProgress.progress.duration) * 100;
-                    }
+                    const watched = itemProgress.progress.watched || 0;
+                    const duration = itemProgress.progress.duration || 1;
+                    progressPercentage = (watched / duration) * 100;
                 }
             }
 
+            // Create the correct path based on media type
+            const path = `/${mediaType}/${item.id}`;
+            
+            // Get the correct title based on media type
+            const title = mediaType === 'tv' ? item.name : item.title;
+            
             return (
                 <Link 
                     to={path}
@@ -923,47 +918,24 @@ const { useState, useEffect, useRef, useCallback } = React;
                     <div className="relative aspect-[2/3]">
                         <img 
                             src={`${IMG_BASE_URL}${item.poster_path}`}
-                            alt={item.title || item.name}
+                            alt={title}
                             className="w-full h-full object-cover rounded-xl transition-transform duration-500 group-hover:scale-105"
                         />
-
-                        <div className={`absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent transition-opacity duration-300 ${
-                            isHovered ? 'opacity-100' : 'opacity-0'
-                        }`} />
-
-                        <div className={`absolute inset-0 p-4 flex flex-col justify-end transition-all duration-300 ${
-                            isHovered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-                        }`}>
-                            <div className="space-y-2">
-                                <h3 className="text-lg font-bold text-white line-clamp-2">
-                                    {item.title || item.name}
-                                </h3>
-                                
-                                <div className="flex items-center gap-3 text-sm text-gray-300">
-                                    <span className="flex items-center gap-1">
-                                        <svg className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                        </svg>
-                                        {formatRating(item.vote_average)}
-                                    </span>
-                                    <span>•</span>
-                                    <span>{new Date(item.release_date || item.first_air_date).getFullYear()}</span>
-                                    <span>•</span>
-                                    <span className="uppercase text-xs font-medium px-2 py-1 rounded-md bg-white/20">
-                                        {mediaType}
-                                    </span>
+                        {isHovered && (
+                            <div className="absolute inset-0 bg-black/80 flex flex-col justify-end p-4 space-y-2 rounded-xl">
+                                <h3 className="text-white font-semibold">{title}</h3>
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-gray-300">{item.release_date || item.first_air_date}</span>
+                                    <span className="text-gray-300">{formatRating(item.vote_average)}</span>
                                 </div>
-                            </div>
-                        </div>
-
-                        {progressPercentage !== null && (
-                            <div className="absolute bottom-0 left-0 right-0">
-                                <div className="relative h-1 bg-gray-800/80">
-                                    <div 
-                                        className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#00f2fe] to-[#4facfe]"
-                                        style={{ width: `${progressPercentage}%` }}
-                                    />
-                                </div>
+                                {progressPercentage !== null && (
+                                    <div className="w-full h-1 bg-gray-700 rounded-full overflow-hidden">
+                                        <div 
+                                            className="h-full bg-gradient-to-r from-[#00f2fe] to-[#4facfe]"
+                                            style={{ width: `${Math.min(100, progressPercentage)}%` }}
+                                        />
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -1404,33 +1376,14 @@ const { useState, useEffect, useRef, useCallback } = React;
             );
         }
 
-        const getWatchProgress = (mediaId) => {
+        const getWatchProgress = (movieId) => {
             const progress = JSON.parse(localStorage.getItem('vidLinkProgress') || '{}');
-            const mediaData = progress[mediaId];
+            const movieProgress = progress[movieId];
             
-            if (!mediaData) return null;
-
-            if (mediaData.type === 'movie') {
-                return {
-                    type: 'movie',
-                    progress: (mediaData.progress.watched / mediaData.progress.duration) * 100,
-                    watched: mediaData.progress.watched,
-                    duration: mediaData.progress.duration
-                };
-            } else {
-                const episodeKey = `s${mediaData.last_season_watched}e${mediaData.last_episode_watched}`;
-                const lastEpisode = mediaData.show_progress && mediaData.show_progress[episodeKey];
-                if (!lastEpisode) return null;
-
-                return {
-                    type: 'tv',
-                    progress: (lastEpisode.progress.watched / lastEpisode.progress.duration) * 100,
-                    season: mediaData.last_season_watched,
-                    episode: mediaData.last_episode_watched,
-                    watched: lastEpisode.progress.watched,
-                    duration: lastEpisode.progress.duration
-                };
-            }
+            if (!movieProgress || !movieProgress.progress) return null;
+            
+            const percentage = (movieProgress.progress.watched / movieProgress.progress.duration) * 100;
+            return isNaN(percentage) ? null : percentage;
         };
 
         const getEpisodeProgress = (showId, seasonNumber, episodeNumber) => {
