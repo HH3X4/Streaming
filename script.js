@@ -1,1388 +1,1454 @@
-const CONFIG = { baseUrl: 'https://vidlink.pro' };
-const API_KEY = '8908a80d66eae13bd34f357ec5bc1db8'; // Replace with your actual API key
-const BASE_URL = 'https://api.themoviedb.org/3';
-const IMG_BASE_URL = 'https://image.tmdb.org/t/p/w500';
-const DEFAULT_POSTER = 'https://via.placeholder.com/500x750?text=No+Poster';
-const DEFAULT_STILL = 'https://via.placeholder.com/200x300?text=No+Still';
+const { useState, useEffect, useRef, useCallback } = React;
+        const { BrowserRouter, Route, Link, Switch, useParams } = ReactRouterDOM;
 
-let currentPage = 1;
-let currentSection = 'home';
-let isLoading = false;
+        const axios = axios;
+        const API_KEY = '8908a80d66eae13bd34f357ec5bc1db8';
+        const BASE_URL = 'https://api.themoviedb.org/3';
+        const IMG_BASE_URL = 'https://image.tmdb.org/t/p/w500';
 
-let currentMediaType = 'all';
+        const WatchlistContext = React.createContext({
+            watchlist: [],
+            updateWatchlist: () => {}
+        });
 
-const DOM = {
-  mainContent: document.getElementById('main-content'),
-  modal: document.getElementById('info-modal'),
-};
+        function WatchlistProvider({ children }) {
+            const [watchlist, setWatchlist] = useState([]);
 
-document.querySelectorAll('.nav-links a').forEach(link => {
-    link.addEventListener('click', (e) => {
-        e.preventDefault();
-        const page = e.target.getAttribute('data-page');
-        navigateTo(page);
-    });
-});
+            useEffect(() => {
+                const savedWatchlist = JSON.parse(localStorage.getItem('watchlist') || '[]');
+                setWatchlist(savedWatchlist);
+            }, []);
 
-function navigateTo(page) {
-    if (page === currentSection) return;
-    currentPage = 1;
-    currentSection = page;
-    DOM.mainContent.innerHTML = '';
-    isLoading = false;
-    loadContent();
-}
+            const updateWatchlist = (newWatchlist) => {
+                setWatchlist(newWatchlist);
+                localStorage.setItem('watchlist', JSON.stringify(newWatchlist));
+            };
 
-async function loadContent() {
-    if (isLoading || !API_KEY) return;
-    isLoading = true;
-
-    if (currentSection === 'genre') {
-        const genreId = document.querySelector('.page-header').dataset.genreId;
-        const genreName = document.querySelector('.page-header h1').textContent;
-        await loadGenreContent(genreId, genreName);
-        return;
-    }
-
-    if (currentSection === 'home') {
-        try {
-            const [
-                trending, 
-                topMovies, 
-                topSeries, 
-                upcoming,
-                popular
-            ] = await Promise.all([
-                fetch(`${BASE_URL}/trending/all/day?api_key=${API_KEY}`).then(r => r.json()),
-                fetch(`${BASE_URL}/movie/top_rated?api_key=${API_KEY}`).then(r => r.json()),
-                fetch(`${BASE_URL}/tv/top_rated?api_key=${API_KEY}`).then(r => r.json()),
-                fetch(`${BASE_URL}/movie/upcoming?api_key=${API_KEY}`).then(r => r.json()),
-                fetch(`${BASE_URL}/movie/popular?api_key=${API_KEY}`).then(r => r.json())
-            ]);
-
-            const heroItem = trending.results[Math.floor(Math.random() * trending.results.length)];
-            const heroHTML = createHeroSection(heroItem);
-            const continueWatchingHTML = createContinueWatchingSection();
-            const recommendationsHTML = await loadRecommendations();
-            const genreBasedHTML = await loadGenreBasedRecommendations();
-            const watchTimeBasedHTML = await loadWatchTimeBasedContent();
-            const popularInRegionHTML = await loadPopularInRegion();
-            
-            const contentHTML = `
-                ${heroHTML}
-                <div class="content-sections">
-                    ${continueWatchingHTML}
-                    ${recommendationsHTML}
-                    ${genreBasedHTML}
-                    ${watchTimeBasedHTML}
-                    ${popularInRegionHTML}
-                    ${createContentRow('Trending Now', trending.results)}
-                    ${createContentRow('Top Rated Movies', topMovies.results)}
-                    ${createContentRow('Top Rated Series', topSeries.results)}
-                    ${createContentRow('Popular This Week', popular.results)}
-                    ${createContentRow('Coming Soon', upcoming.results)}
-                </div>
-            `;
-
-            DOM.mainContent.innerHTML = contentHTML;
-            initializeSliders();
-            
-        } catch (error) {
-            console.error('Error loading homepage:', error);
+            return (
+                <WatchlistContext.Provider value={{ watchlist, updateWatchlist }}>
+                    {children}
+                </WatchlistContext.Provider>
+            );
         }
-    } else if (currentSection === 'movies' || currentSection === 'series') {
-        const mediaType = currentSection === 'movies' ? 'movie' : 'tv';
-        
-        if (currentPage === 1) {
-            DOM.mainContent.innerHTML = `
-                <div class="page-content">
-                    <div class="page-header">
-                        <h1>${currentSection === 'movies' ? 'Movies' : 'TV Series'}</h1>
+
+        function App() {
+            return (
+                <BrowserRouter>
+                    <WatchlistProvider>
+                        <div className="min-h-screen bg-gray-900 text-white">
+                            <Header />
+                            <main className="container mx-auto px-4 py-6">
+                                <Switch>
+                                    <Route exact path="/" component={Home} />
+                                    <Route exact path="/search" component={Search} />
+                                    <Route exact path="/movies" component={MovieList} />
+                                    <Route exact path="/tv" component={TVShowList} />
+                                    <Route path="/watchlist" component={Watchlist} />
+                                    <Route path="/movie/:id" component={MovieDetails} />
+                                    <Route path="/tv/:id" component={TVDetails} />
+                                    <Route path="/continue-watching" component={ContinueWatching} />
+                                </Switch>
+                            </main>
+                            <Footer />
+                        </div>
+                    </WatchlistProvider>
+                </BrowserRouter>
+            );
+        }
+
+        function Header() {
+            return (
+                <header className="fixed w-full z-50 backdrop-blur">
+                    <div className="absolute inset-0 bg-black/90"></div>
+                    <nav className="container mx-auto px-6 py-4 relative">
+                        <div className="flex justify-between items-center">
+                            <Link to="/" className="flex items-center space-x-2">
+                                <span className="text-4xl font-bold gradient-text tracking-tight animate-float">Hexa</span>
+                                <span className="text-xs text-gray-400 uppercase tracking-widest">Premium</span>
+                            </Link>
+                            <div className="flex items-center space-x-6">
+                                <nav className="flex space-x-6">
+                                    <Link to="/" className="hover:text-[#4facfe] transition-colors">Home</Link>
+                                    <Link to="/movies" className="hover:text-[#4facfe] transition-colors">Movies</Link>
+                                    <Link to="/tv" className="hover:text-[#4facfe] transition-colors">TV Shows</Link>
+                                    <Link to="/watchlist" className="hover:text-[#4facfe] transition-colors">Watchlist</Link>
+                                    <Link to="/continue-watching" className="hover:text-[#4facfe] transition-colors">Continue Watching</Link>
+                                </nav>
+                                <SearchBar />
+                            </div>
+                        </div>
+                    </nav>
+                </header>
+            );
+        }
+
+        function Home() {
+            const [featured, setFeatured] = useState(null);
+            const [sections, setSections] = useState({});
+            const [activeSection, setActiveSection] = useState('trending');
+            const [pages, setPages] = useState({});
+            const [hasMore, setHasMore] = useState({});
+            const [loading, setLoading] = useState({});
+
+            const sectionTitles = {
+                trending: "Trending This Week",
+                trendingDay: "Trending Today",
+                topRatedMovies: "Top Rated Movies",
+                topRatedTV: "Top Rated TV Shows",
+                upcoming: "Upcoming Movies",
+                popularMovies: "Popular Movies",
+                popularTV: "Popular TV Shows",
+                nowPlaying: "Now Playing",
+                airingToday: "TV Shows Airing Today",
+                onTheAir: "Currently Airing TV Shows",
+                action: "Action Movies",
+                comedy: "Comedy Movies",
+                horror: "Horror Movies",
+                documentary: "Documentaries"
+            };
+
+            const getContentType = (section, item) => {
+                const movieSections = ['topRatedMovies', 'upcoming', 'popularMovies', 'nowPlaying', 'action', 'comedy', 'horror', 'documentary'];
+                const tvSections = ['topRatedTV', 'popularTV', 'airingToday', 'onTheAir'];
+                
+                if (movieSections.includes(section)) return 'movie';
+                if (tvSections.includes(section)) return 'tv';
+                
+                // For trending sections, check the item's media_type
+                return item.media_type || (item.first_air_date ? 'tv' : 'movie');
+            };
+
+            const renderSection = (sectionKey) => {
+                return (
+                    <div className="space-y-4">
+                        <h2 className="text-2xl font-semibold">{sectionTitles[sectionKey]}</h2>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                            {sections[sectionKey] && sections[sectionKey].map(item => (
+                                <MovieCard 
+                                    key={item.id} 
+                                    item={item} 
+                                    type={getContentType(sectionKey, item)}
+                                />
+                            ))}
+                        </div>
                     </div>
-                    ${createFilterSection(mediaType)}
-                    <div class="content-grid"></div>
-                </div>
-            `;
-            
-            // Add filter event listeners
-            document.querySelectorAll('.filter-select').forEach(select => {
-                select.addEventListener('change', async () => {
-                    currentPage = 1;
-                    const contentGrid = DOM.mainContent.querySelector('.content-grid');
-                    contentGrid.innerHTML = '';
-                    const results = await applyFilters(mediaType);
-                    results.forEach(item => {
-                        item.media_type = mediaType;
-                        const element = createContentCard(item);
-                        contentGrid.appendChild(element);
+                );
+            };
+
+            useEffect(() => {
+                Promise.all([
+                    axios.get(`${BASE_URL}/trending/all/week?api_key=${API_KEY}`),
+                    axios.get(`${BASE_URL}/trending/all/day?api_key=${API_KEY}`),
+                    axios.get(`${BASE_URL}/movie/top_rated?api_key=${API_KEY}`),
+                    axios.get(`${BASE_URL}/movie/upcoming?api_key=${API_KEY}`),
+                    axios.get(`${BASE_URL}/movie/popular?api_key=${API_KEY}`),
+                    axios.get(`${BASE_URL}/movie/now_playing?api_key=${API_KEY}`),
+                    axios.get(`${BASE_URL}/tv/top_rated?api_key=${API_KEY}`),
+                    axios.get(`${BASE_URL}/tv/popular?api_key=${API_KEY}`),
+                    axios.get(`${BASE_URL}/tv/airing_today?api_key=${API_KEY}`),
+                    axios.get(`${BASE_URL}/tv/on_the_air?api_key=${API_KEY}`),
+                    axios.get(`${BASE_URL}/discover/movie?api_key=${API_KEY}&with_genres=28`),
+                    axios.get(`${BASE_URL}/discover/movie?api_key=${API_KEY}&with_genres=35`),
+                    axios.get(`${BASE_URL}/discover/movie?api_key=${API_KEY}&with_genres=27`),
+                    axios.get(`${BASE_URL}/discover/movie?api_key=${API_KEY}&with_genres=99`)
+                ]).then(([
+                    trendingWeekRes,
+                    trendingDayRes,
+                    topRatedMoviesRes,
+                    upcomingRes,
+                    popularMoviesRes,
+                    nowPlayingRes,
+                    topRatedTVRes,
+                    popularTVRes,
+                    airingTodayRes,
+                    onTheAirRes,
+                    actionRes,
+                    comedyRes,
+                    horrorRes,
+                    documentaryRes
+                ]) => {
+                    setFeatured(trendingWeekRes.data.results[0]);
+                    setSections({
+                        trending: trendingWeekRes.data.results.slice(1),
+                        trendingDay: trendingDayRes.data.results,
+                        topRatedMovies: topRatedMoviesRes.data.results,
+                        topRatedTV: topRatedTVRes.data.results,
+                        upcoming: upcomingRes.data.results,
+                        popularMovies: popularMoviesRes.data.results,
+                        popularTV: popularTVRes.data.results,
+                        nowPlaying: nowPlayingRes.data.results,
+                        airingToday: airingTodayRes.data.results,
+                        onTheAir: onTheAirRes.data.results,
+                        action: actionRes.data.results,
+                        comedy: comedyRes.data.results,
+                        horror: horrorRes.data.results,
+                        documentary: documentaryRes.data.results
                     });
                 });
-            });
-        }
-        
-        const results = await applyFilters(mediaType);
-        const contentGrid = DOM.mainContent.querySelector('.content-grid');
-        results.forEach(item => {
-            item.media_type = mediaType;
-            const element = createContentCard(item);
-            contentGrid.appendChild(element);
-        });
-        
-        currentPage++;
-    } else if (currentSection === 'series') {
-        try {
-            const popular = await fetch(`${BASE_URL}/tv/popular?api_key=${API_KEY}&page=${currentPage}`).then(r => r.json());
+            }, []);
 
-            let combinedResults = [...popular.results, ...topRated.results, ...trending.results];
-            
-            combinedResults = Array.from(new Set(combinedResults.map(s => s.id)))
-                .map(id => combinedResults.find(s => s.id === id));
+            return (
+                <div className="space-y-12">
+                    {featured && <FeaturedHero item={featured} />}
+                    
+                    {/* Section Navigation */}
+                    <div className="flex flex-wrap gap-4 justify-center">
+                        {Object.keys(sectionTitles).map(section => (
+                            <button
+                                key={section}
+                                onClick={() => setActiveSection(section)}
+                                className={`px-6 py-2 rounded-full transition-all duration-300 ${
+                                    activeSection === section
+                                        ? 'bg-gradient-to-r from-[#00f2fe] to-[#4facfe] text-white'
+                                        : 'premium-glass hover:bg-white/10'
+                                }`}
+                            >
+                                {sectionTitles[section]}
+                            </button>
+                        ))}
+                    </div>
 
-            combinedResults.sort((a, b) => {
-                const scoreA = (a.popularity * 0.4) + (a.vote_average * 0.6);
-                const scoreB = (b.popularity * 0.4) + (b.vote_average * 0.6);
-                return scoreB - scoreA;
-            });
-
-            combinedResults = combinedResults.filter(show => 
-                show.vote_average >= 7.0 && 
-                show.vote_count >= 1000
+                    {/* Active Section Content */}
+                    <div className="space-y-12">
+                        {sections[activeSection] && (
+                            <CategorySlider 
+                                title={sectionTitles[activeSection]} 
+                                items={sections[activeSection]}
+                                type={activeSection.includes('TV') ? 'tv' : 'movie'}
+                            />
+                        )}
+                    </div>
+                </div>
             );
-
-            if (currentPage === 1) {
-                DOM.mainContent.innerHTML = `
-                    <div class="page-content">
-                        <div class="content-grid"></div>
-                    </div>
-                `;
-            }
-
-            const contentGrid = DOM.mainContent.querySelector('.content-grid');
-            combinedResults.forEach(item => {
-                const element = createContentCard(item);
-                contentGrid.appendChild(element);
-            });
-
-            currentPage++;
-        } catch (error) {
-            console.error('Error fetching series:', error);
         }
-    } else if (currentSection === 'genres') {
-        loadGenrePage();
-    } else if (currentSection === 'genre') {
-        const genreId = document.querySelector('.page-header').dataset.genreId;
-        const genreName = document.querySelector('.page-header h1').textContent;
-        await loadGenreContent(genreId, genreName);
-    } else if (currentSection === 'watchlist') {
-        await loadWatchlistContent();
-    }
 
-    isLoading = false;
-}
+        function FeaturedHero({ item }) {
+            const [featured, setFeatured] = useState([]);
+            const [currentIndex, setCurrentIndex] = useState(0);
+            const [progress, setProgress] = useState(0);
+            const [isTransitioning, setIsTransitioning] = useState(false);
+            const CYCLE_DURATION = 8000;
+            const TRANSITION_DURATION = 1000;
 
-function createContentCard(item) {
-    const card = document.createElement('div');
-    card.className = 'content-card';
-    card.setAttribute('data-id', item.id);
-    
-    const isWatchlisted = isInWatchlist(item.id);
-    const isWatchlistPage = currentSection === 'watchlist';
-    
-    card.innerHTML = `
-        <img src="${item.poster_path ? `${IMG_BASE_URL}${item.poster_path}` : DEFAULT_POSTER}" 
-             alt="${item.title || item.name}">
-        <div class="card-overlay">
-            <div class="card-buttons">
-                <button onclick="showInfo(${item.id}, '${item.media_type || (item.first_air_date ? 'tv' : 'movie')}')" class="card-btn info-btn">
-                    <span>ℹ️</span>
-                </button>
-                <button onclick="playContent(${item.id}, '${item.media_type || (item.first_air_date ? 'tv' : 'movie')}')" class="card-btn play-btn">
-                    <span>▶</span>
-                </button>
-                <button onclick="${isWatchlisted ? `removeFromWatchlist(${item.id})` : `addToWatchlist(${JSON.stringify(item).replace(/"/g, '&quot;')})`}" 
-                        class="card-btn watchlist-btn ${isWatchlisted ? 'active' : ''}">
-                    <span>${isWatchlistPage ? '✕' : (isWatchlisted ? '✓' : '+')}</span>
-                </button>
-            </div>
-            <h3>${item.title || item.name}</h3>
-        </div>
-    `;
-    
-    return card;
-}
+            const formatRating = (rating) => {
+                return rating ? rating.toFixed(1) : 'N/A';
+            };
 
-function debounce(func, wait) {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-}
+            useEffect(() => {
+                Promise.all([
+                    axios.get(`${BASE_URL}/trending/movie/day?api_key=${API_KEY}`),
+                    axios.get(`${BASE_URL}/trending/tv/day?api_key=${API_KEY}`)
+                ]).then(([movieRes, tvRes]) => {
+                    const movies = movieRes.data.results.slice(0, 3).map(m => ({ ...m, media_type: 'movie' }));
+                    const shows = tvRes.data.results.slice(0, 3).map(s => ({ ...s, media_type: 'tv' }));
+                    setFeatured([...movies, ...shows]);
+                });
+            }, []);
 
-window.addEventListener('scroll', debounce(() => {
-    if ((window.innerHeight + window.scrollY) >= document.documentElement.scrollHeight - 1000) {
-        if (!isLoading) {
-            if (currentSection === 'genre') {
-                const genreId = document.querySelector('.page-header').dataset.genreId;
-                const genreName = document.querySelector('.page-header h1').textContent;
-                loadGenreContent(genreId, genreName);
-            } else if (currentSection === 'movies' || currentSection === 'series') {
-                loadContent();
-            }
-        }
-    }
-}, 150));
+            useEffect(() => {
+                if (featured.length === 0) return;
 
-async function showInfo(id, mediaType) {
-    const modal = document.getElementById('info-modal');
-    modal.style.display = 'block';
-    document.body.classList.add('modal-open');
-    
-    try {
-        const [details, credits, videos] = await Promise.all([
-            fetch(`${BASE_URL}/${mediaType}/${id}?api_key=${API_KEY}`).then(r => r.json()),
-            fetch(`${BASE_URL}/${mediaType}/${id}/credits?api_key=${API_KEY}`).then(r => r.json()),
-            fetch(`${BASE_URL}/${mediaType}/${id}/videos?api_key=${API_KEY}`).then(r => r.json())
-        ]);
-        
-        const trailer = videos.results.find(v => v.type === 'Trailer') || videos.results[0];
-        const director = credits.crew.find(c => c.job === 'Director')?.name || 'N/A';
-        const cast = credits.cast.slice(0, 5).map(c => c.name).join(', ');
-        const year = new Date(details.release_date || details.first_air_date).getFullYear();
-        
-        const modalContent = document.createElement('div');
-        modalContent.className = 'modal-content';
-        modalContent.innerHTML = `
-            <div class="modal-backdrop" style="background-image: url('https://image.tmdb.org/t/p/original${details.backdrop_path}')">
-                <div class="modal-gradient"></div>
-            </div>
-            <div class="modal-content-wrapper">
-                <div class="modal-header">
-                    <h1>${details.title || details.name}</h1>
-                    <button class="close-modal" onclick="closeModal()">×</button>
-                </div>
-                <div class="modal-main-content">
-                    <div class="modal-poster">
-                        <img src="${details.poster_path ? `${IMG_BASE_URL}${details.poster_path}` : DEFAULT_POSTER}" 
-                             alt="${details.title || details.name}">
-                    </div>
-                    <div class="modal-info">
-                        <div class="modal-meta">
-                            <div class="meta-item rating">★ ${details.vote_average.toFixed(1)}</div>
-                            <div class="meta-item">${year}</div>
-                            ${details.runtime ? `<div class="meta-item">${Math.floor(details.runtime/60)}h ${details.runtime%60}m</div>` : ''}
-                            ${details.number_of_seasons ? `<div class="meta-item">${details.number_of_seasons} Seasons</div>` : ''}
-                        </div>
-                        <div class="modal-actions">
-                            ${createPlayButton(details, mediaType)}
-                        <p class="modal-overview">${details.overview}</p>
-                        <div class="modal-credits">
-                            <div class="credit-item">
-                                <label>Director</label>
-                                <span>${director}</span>
+                const progressInterval = setInterval(() => {
+                    setProgress(prev => {
+                        if (prev >= 100) {
+                            setIsTransitioning(true);
+                            setTimeout(() => {
+                                setCurrentIndex(current => (current + 1) % featured.length);
+                                setTimeout(() => {
+                                    setIsTransitioning(false);
+                                }, TRANSITION_DURATION / 2);
+                            }, TRANSITION_DURATION / 2);
+                            return 0;
+                        }
+                        return prev + (100 / (CYCLE_DURATION / 100));
+                    });
+                }, 100);
+
+                return () => clearInterval(progressInterval);
+            }, [featured]);
+
+            if (featured.length === 0) return null;
+
+            const currentItem = featured[currentIndex];
+
+            return (
+                <div className="relative h-[85vh] pt-40">
+                    <div className="absolute inset-x-0 top-40 bottom-0 mx-4">
+                        <div className={`relative h-full rounded-3xl overflow-hidden shadow-2xl transition-all duration-1000 ${
+                            isTransitioning ? 'opacity-0 scale-105' : 'opacity-100 scale-100'
+                        }`}>
+                            {/* Background Image */}
+                            <div className="absolute inset-0">
+                                <img 
+                                    src={`https://image.tmdb.org/t/p/original${currentItem.backdrop_path}`}
+                                    alt={currentItem.title || currentItem.name}
+                                    className="w-full h-full object-cover"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/60 to-transparent" />
+                                <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/40 to-transparent" />
                             </div>
-                            <div class="credit-item">
-                                <label>Cast</label>
-                                <span>${cast}</span>
+
+                            {/* Progress Indicators */}
+                            <div className="absolute top-8 right-8 flex items-center space-x-3">
+                                {featured.map((_, idx) => (
+                                    <div key={idx} 
+                                        className={`relative h-1 bg-white/20 rounded-full overflow-hidden transition-all duration-300 ${
+                                            idx === currentIndex ? 'w-16' : 'w-4'
+                                        }`}
+                                    >
+                                        <div 
+                                            className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#00f2fe] to-[#4facfe] rounded-full shimmer"
+                                            style={{
+                                                width: idx === currentIndex ? `${progress}%` : idx < currentIndex ? '100%' : '0%'
+                                            }}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Content */}
+                            <div className="absolute inset-0 p-16 flex items-end">
+                                <div className="max-w-3xl space-y-6">
+                                    <h1 className="text-7xl font-bold text-gradient-animated leading-tight">
+                                        {currentItem.title || currentItem.name}
+                                    </h1>
+                                    <div className="flex items-center space-x-4">
+                                        <span className="flex items-center text-yellow-400">
+                                            <svg className="w-5 h-5 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                            </svg>
+                                            {formatRating(currentItem.vote_average)}
+                                        </span>
+                                        <span className="text-gray-400">•</span>
+                                        <span className="text-gray-300">{new Date(currentItem.release_date || currentItem.first_air_date).getFullYear()}</span>
+                                    </div>
+                                    <p className="text-gray-300 text-lg line-clamp-3">{currentItem.overview}</p>
+                                    <div className="flex items-center space-x-4">
+                                        <Link 
+                                            to={`/${currentItem.media_type}/${currentItem.id}`}
+                                            className="group px-8 py-4 rounded-full bg-gradient-to-r from-[#00f2fe] to-[#4facfe] text-white font-semibold hover:shadow-lg hover:shadow-[#4facfe]/20 transition-all duration-300 transform hover:scale-105 flex items-center space-x-2"
+                                        >
+                                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <span>More Info</span>
+                                        </Link>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        ${mediaType === 'tv' ? await generateSeasonsHTML(details.id, details.seasons) : ''}
                     </div>
                 </div>
-            </div>
-        `;
-        
-        modal.innerHTML = '';
-        modal.appendChild(modalContent);
-    } catch (error) {
-        console.error('Error loading details:', error);
-    }
-}
-
-function closeModal() {
-    DOM.modal.style.display = 'none';
-    document.body.classList.remove('modal-open');
-}
-
-async function generateSeasonsHTML(seriesId, seasons) {
-    if (!seasons || !Array.isArray(seasons)) return '';
-    
-    const validSeasons = seasons.filter(season => season.season_number !== 0);
-    const currentSeason = validSeasons[0].season_number;
-    
-    return `
-        <div class="seasons-section">
-            <div class="season-header">
-                <h3>Episodes</h3>
-                <div class="season-select-wrapper">
-                    <div class="season-select-header" onclick="toggleSeasonSelect(this)">
-                        Season ${currentSeason}
-                    </div>
-                    <div class="season-options">
-                        ${validSeasons.map(season => `
-                            <div class="season-option ${season.season_number === currentSeason ? 'selected' : ''}" 
-                                 onclick="selectSeason(this, ${season.season_number}, ${seriesId})">
-                                Season ${season.season_number}
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            </div>
-            <div id="episodes-container">
-                ${await loadSeasonEpisodes(seriesId, currentSeason)}
-            </div>
-        </div>
-    `;
-}
-
-function toggleSeasonSelect(header) {
-    const wrapper = header.parentElement;
-    wrapper.classList.toggle('open');
-    
-    if (wrapper.classList.contains('open')) {
-        document.addEventListener('click', function closeSelect(e) {
-            if (!wrapper.contains(e.target)) {
-                wrapper.classList.remove('open');
-                document.removeEventListener('click', closeSelect);
-            }
-        });
-    }
-}
-
-async function selectSeason(option, seasonNumber, seriesId) {
-    const wrapper = option.closest('.season-select-wrapper');
-    wrapper.querySelectorAll('.season-option').forEach(opt => opt.classList.remove('selected'));
-    option.classList.add('selected');
-    
-    wrapper.querySelector('.season-select-header').textContent = `Season ${seasonNumber}`;
-    
-    wrapper.classList.remove('open');
-    
-    const container = document.getElementById('episodes-container');
-    container.innerHTML = '<div class="loading">Loading episodes...</div>';
-    
-    try {
-        container.innerHTML = await loadSeasonEpisodes(seriesId, seasonNumber);
-    } catch (error) {
-        console.error('Error fetching season:', error);
-        container.innerHTML = '<div class="error">Failed to load episodes</div>';
-    }
-}
-
-async function loadSeasonEpisodes(seriesId, seasonNumber) {
-    try {
-        const response = await fetch(
-            `${BASE_URL}/tv/${seriesId}/season/${seasonNumber}?api_key=${API_KEY}`
-        );
-        const data = await response.json();
-        
-        return data.episodes.map(episode => createEpisodeCard(episode, seriesId, seasonNumber)).join('');
-    } catch (error) {
-        console.error('Error loading episodes:', error);
-        return '<div class="error">Failed to load episodes</div>';
-    }
-}
-
-async function changeSeason(seasonNumber, seriesId) {
-    const container = document.getElementById('episodes-container');
-    container.innerHTML = '<div class="loading">Loading episodes...</div>';
-    
-    try {
-        container.innerHTML = await loadSeasonEpisodes(seriesId, seasonNumber);
-    } catch (error) {
-        console.error('Error fetching season:', error);
-        container.innerHTML = '<div class="error">Failed to load episodes</div>';
-    }
-}
-
-function toggleEpisodes(header) {
-    const episodesContainer = header.nextElementSibling;
-    const arrow = header.querySelector('.season-toggle');
-    const isVisible = episodesContainer.style.display === 'block';
-    
-    episodesContainer.style.display = isVisible ? 'none' : 'block';
-    arrow.style.transform = isVisible ? 'rotate(0deg)' : 'rotate(180deg)';
-}
-
-window.addEventListener('click', (e) => {
-    if (e.target === DOM.modal) {
-        closeModal();
-    }
-});
-
-function createHeroSection(item) {
-    const backdrop = `https://image.tmdb.org/t/p/original${item.backdrop_path}`;
-    const title = item.title || item.name;
-    const overview = item.overview;
-    
-    return `
-        <div class="hero-section" style="background-image: url('${backdrop}')">
-            <div class="hero-gradient"></div>
-            <div class="hero-content">
-                <h1>${title}</h1>
-                <p>${overview}</p>
-                <div class="hero-buttons">
-                    <button class="play-btn" onclick="showInfo(${item.id}, '${item.media_type}')">
-                        <span>▶</span> Play
-                    </button>
-                    <button class="more-info-btn" onclick="showInfo(${item.id}, '${item.media_type}')">
-                        <span>ℹ</span> More Info
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-}
-
-function initializeSliders() {
-    const sliders = document.querySelectorAll('.content-slider');
-    sliders.forEach(slider => {
-        let isDown = false;
-        let startX;
-        let scrollLeft;
-        let isDragging = false;
-
-        slider.addEventListener('mousedown', (e) => {
-            isDown = true;
-            slider.classList.add('active');
-            startX = e.pageX - slider.offsetLeft;
-            scrollLeft = slider.scrollLeft;
-        });
-
-        slider.addEventListener('mouseleave', () => {
-            isDown = false;
-            isDragging = false;
-            slider.classList.remove('active');
-            restoreCardInteractions(slider);
-        });
-
-        slider.addEventListener('mouseup', () => {
-            isDown = false;
-            slider.classList.remove('active');
-            
-            setTimeout(() => {
-                isDragging = false;
-                restoreCardInteractions(slider);
-            }, 10);
-        });
-
-        slider.addEventListener('mousemove', (e) => {
-            if (!isDown) return;
-            e.preventDefault();
-            isDragging = true;
-            const x = e.pageX - slider.offsetLeft;
-            const walk = (x - startX);
-            slider.scrollLeft = scrollLeft - walk;
-            
-            // Disable pointer events only when actually dragging
-            slider.querySelectorAll('.content-card').forEach(card => {
-                card.style.pointerEvents = 'none';
-            });
-        });
-    });
-}
-
-function restoreCardInteractions(slider) {
-    slider.querySelectorAll('.content-card').forEach(card => {
-        card.style.pointerEvents = 'auto';
-        const overlay = card.querySelector('.card-overlay');
-        if (overlay) {
-            overlay.style.display = 'none';
-            overlay.offsetHeight; // Force repaint
-            overlay.style.display = '';
+            );
         }
-    });
-}
 
-function createContentRow(title, items) {
-    return `
-        <div class="content-row">
-            <h2>${title}</h2>
-            <div class="slider-wrapper">
-                <button class="slider-controls slider-prev" onclick="slideContent(this, -1)">❮</button>
-                <div class="content-slider">
-                    ${items.map(item => createContentCard(item).outerHTML).join('')}
-                </div>
-                <button class="slider-controls slider-next" onclick="slideContent(this, 1)">❯</button>
-            </div>
-        </div>
-    `;
-}
+        function CategorySlider({ title, items, type, onLoadMore, hasMore, loading }) {
+            const containerRef = useRef(null);
+            const observerRef = useRef(null);
 
-function slideContent(button, direction) {
-    const slider = button.parentElement.querySelector('.content-slider');
-    const cardWidth = slider.querySelector('.content-card').offsetWidth + 16; // 16 is the gap
-    const scrollAmount = cardWidth * 4 * direction;
-    slider.scrollBy({ left: scrollAmount, behavior: 'smooth' });
-}
+            useEffect(() => {
+                const options = {
+                    root: null,
+                    rootMargin: '20px',
+                    threshold: 0.1
+                };
 
-function createPlayButton(details, mediaType) {
-    if (mediaType === 'movie') {
-        return `
-            <button class="modal-play-btn" onclick="showPlayer('movie', ${details.id})">
-                <span>▶</span> Play Movie
-            </button>
-        `;
-    } else if (mediaType === 'tv') {
-        const progressData = localStorage.getItem('vidLinkProgress');
-        if (progressData) {
-            const progress = JSON.parse(progressData);
-            const showProgress = progress[details.id];
-            
-            if (showProgress) {
-                return `
-                    <button class="modal-play-btn" onclick="showPlayer('tv', ${details.id}, ${showProgress.last_season_watched}, ${showProgress.last_episode_watched})">
-                        <span>▶</span> Continue S${showProgress.last_season_watched} E${showProgress.last_episode_watched}
-                    </button>
-                    <button class="modal-play-btn secondary" onclick="showPlayer('tv', ${details.id}, 1, 1)">
-                        <span>▶</span> Start from Beginning
-                    </button>
-                `;
-            }
-        }
-        
-        return `
-            <button class="modal-play-btn" onclick="showPlayer('tv', ${details.id}, 1, 1)">
-                <span>▶</span> Play Series
-            </button>
-        `;
-    }
-}
+                observerRef.current = new IntersectionObserver((entries) => {
+                    if (entries[0].isIntersecting && hasMore && !loading) {
+                        onLoadMore();
+                    }
+                }, options);
 
-function createEpisodePlayButton(seriesId, seasonNumber, episodeNumber) {
-    return `
-        <button class="play-episode-btn" onclick="showPlayer('tv', ${seriesId}, ${seasonNumber}, ${episodeNumber})">
-            <span>▶</span>
-        </button>
-    `;
-}
-
-function showPlayer(type, id, season = null, episode = null) {
-    const mainContent = document.getElementById('main-content');
-    document.body.style.overflow = 'hidden';
-    
-    // Add event listener for watch progress
-    window.addEventListener('message', handleWatchProgress);
-    
-    const playerHTML = `
-        <div class="player-wrapper">
-            <button class="return-btn" onclick="closePlayer()">
-                <svg viewBox="0 0 24 24">
-                    <path fill="currentColor" d="M19 11H7.14l3.63-4.36a1 1 0 1 0-1.54-1.28l-5 6a1.19 1.19 0 0 0-.09.15c0 .05 0 .08-.07.13A1 1 0 0 0 4 12a1 1 0 0 0 .07.36c0 .05 0 .08.07.13a1.19 1.19 0 0 0 .09.15l5 6A1 1 0 0 0 10 19a1 1 0 0 0 .64-.23 1 1 0 0 0 .13-1.41L7.14 13H19a1 1 0 0 0 0-2z"/>
-                </svg>
-                Return to Browse
-            </button>
-            <div class="player-container">
-                <iframe 
-                    id="player-iframe" 
-                    allowfullscreen
-                    src="${getPlayerUrl(type, id, season, episode)}"
-                ></iframe>
-            </div>
-        </div>
-    `;
-    
-    mainContent.innerHTML = playerHTML;
-}
-
-function closePlayer() {
-    window.removeEventListener('message', handleWatchProgress);
-    const mainContent = document.getElementById('main-content');
-    document.body.style.overflow = '';
-    loadContent();
-}
-
-function getPlayerUrl(type, id, season, episode) {
-    let playerUrl = type === 'movie' 
-        ? `${CONFIG.baseUrl}/movie/${id}` 
-        : `${CONFIG.baseUrl}/tv/${id}/${season}/${episode}`;
-        
-    const params = new URLSearchParams({
-        primaryColor: '6366f1',
-        secondaryColor: '8b5cf6',
-        iconColor: '6366f1',
-        icons: 'vid'
-    });
-    
-    return `${playerUrl}?${params.toString()}`;
-}
-
-function playContent(id, mediaType) {
-    if (mediaType === 'movie') {
-        showPlayer('movie', id);
-    } else {
-        showPlayer('tv', id, 1, 1);
-    }
-}
-
-function createEpisodeCard(episode, seriesId, seasonNumber) {
-    return `
-        <div class="episode-item">
-            <div class="episode-content">
-                <div class="episode-thumbnail">
-                    <img src="${episode.still_path ? `${IMG_BASE_URL}${episode.still_path}` : DEFAULT_STILL}" 
-                         alt="Episode ${episode.episode_number}">
-                </div>
-                <div class="episode-details">
-                    <div class="episode-meta">
-                        <span class="episode-number">Episode ${episode.episode_number}</span>
-                        <span class="episode-duration">42m</span>
-                    </div>
-                    <h4>${episode.name}</h4>
-                    <p>${episode.overview || 'No description available.'}</p>
-                </div>
-                <button onclick="showPlayer('tv', ${seriesId}, ${seasonNumber}, ${episode.episode_number})" 
-                        class="episode-play-btn">
-                    <span></span>
-                </button>
-            </div>
-        </div>
-    `;
-}
-
-let searchTimeout;
-
-async function handleSearch() {
-    const query = document.getElementById('search-input').value.trim();
-    if (!query) return;
-    
-    currentSection = 'search';
-    currentPage = 1;
-    DOM.mainContent.innerHTML = `
-        <div class="page-content">
-            <div class="page-header">
-                <h1>Search Results for "${query}"</h1>
-            </div>
-            <div class="content-grid"></div>
-        </div>
-    `;
-    
-    try {
-        const [movies, shows] = await Promise.all([
-            fetch(`${BASE_URL}/search/movie?api_key=${API_KEY}&query=${query}`).then(r => r.json()),
-            fetch(`${BASE_URL}/search/tv?api_key=${API_KEY}&query=${query}`).then(r => r.json())
-        ]);
-        
-        const contentGrid = DOM.mainContent.querySelector('.content-grid');
-        const combinedResults = [...movies.results, ...shows.results]
-            .sort((a, b) => b.popularity - a.popularity);
-        
-        if (combinedResults.length === 0) {
-            contentGrid.innerHTML = '<p class="empty-results">No results found</p>';
-            return;
-        }
-        
-        combinedResults.forEach(item => {
-            const element = createContentCard(item);
-            contentGrid.appendChild(element);
-        });
-    } catch (error) {
-        console.error('Error searching:', error);
-    }
-}
-
-// Add these event listeners after DOM initialization
-document.getElementById('search-input').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        handleSearch();
-    }
-});
-
-document.getElementById('search-button').addEventListener('click', handleSearch);
-
-// Anti-inspect code
-(function() {
-    let devtoolsOpen = false;
-    const clownOverlay = document.getElementById('clown-overlay');
-
-    function showClown() {
-        if (!devtoolsOpen) {
-            devtoolsOpen = true;
-            document.body.style.overflow = 'hidden';
-            clownOverlay.style.display = 'flex';
-            Array.from(document.body.children).forEach(child => {
-                if (child !== clownOverlay) {
-                    child.style.display = 'none';
+                const container = containerRef.current;
+                if (container) {
+                    observerRef.current.observe(container);
                 }
-            });
-        }
-    }
 
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I')) {
-            e.preventDefault();
-            showClown();
-        }
-    });
+                return () => {
+                    if (observerRef.current) {
+                        observerRef.current.disconnect();
+                    }
+                };
+            }, [hasMore, loading, onLoadMore]);
 
-    let element = new Image();
-    Object.defineProperty(element, 'id', {
-        get: function() {
-            devtoolsOpen = true;
-            showClown();
-        }
-    });
-
-    const checkDevTools = () => {
-        if (window.outerHeight - window.innerHeight > 200 || 
-            window.outerWidth - window.innerWidth > 200) {
-            showClown();
-        }
-    };
-
-    setInterval(checkDevTools, 1000);
-})();
-
-loadContent();
-
-document.addEventListener('DOMContentLoaded', init);
-
-function handleWatchProgress(event) {
-    if (event.origin !== 'https://vidlink.pro') {
-        return;
-    }
-
-    if (event.data && event.data.type === 'MEDIA_DATA') {
-        const mediaData = event.data.data;
-        localStorage.setItem('vidLinkProgress', JSON.stringify(mediaData));
-        updateContinueWatchingSection();
-    }
-}
-
-function createContinueWatchingSection() {
-    const progressData = localStorage.getItem('vidLinkProgress');
-    if (!progressData) return '';
-
-    const progress = JSON.parse(progressData);
-    const items = Object.values(progress)
-        .sort((a, b) => b.last_updated - a.last_updated)
-        .slice(0, 10); // Show only last 10 items
-
-    if (items.length === 0) return '';
-
-    return `
-        <div class="content-row">
-            <h2>Continue Watching</h2>
-            <div class="slider-wrapper">
-                <button class="slider-controls slider-prev" onclick="slideContent(this, -1)">❮</button>
-                <div class="content-slider">
-                    ${items.map(item => createProgressCard(item)).join('')}
-                </div>
-                <button class="slider-controls slider-next" onclick="slideContent(this, 1)">❯</button>
-            </div>
-        </div>
-    `;
-}
-
-function createProgressCard(item) {
-    const progress = item.type === 'tv' 
-        ? (parseInt(item.last_episode_watched) / item.number_of_episodes) * 100
-        : (item.progress.watched / item.progress.duration) * 100;
-
-    const card = document.createElement('div');
-    card.className = 'content-card';
-    card.setAttribute('data-id', item.id);
-    
-    card.innerHTML = `
-        <img src="${item.poster_path ? `${IMG_BASE_URL}${item.poster_path}` : DEFAULT_POSTER}" 
-             alt="${item.title}">
-        <div class="card-overlay">
-            <div class="progress-bar">
-                <div class="progress" style="width: ${Math.min(progress, 100)}%"></div>
-            </div>
-            <div class="card-buttons">
-                <button onclick="showInfo(${item.id}, '${item.type}')" class="card-btn info-btn">
-                    <span>ℹ️</span>
-                </button>
-                <button onclick="resumeContent(${item.id}, '${item.type}')" class="card-btn play-btn">
-                    <span>▶</span>
-                </button>
-            </div>
-            <h3>${item.title}</h3>
-            ${item.type === 'tv' ? `<p>S${item.last_season_watched} E${item.last_episode_watched}</p>` : ''}
-        </div>
-    `;
-    
-    return card.outerHTML;
-}
-
-function resumeContent(id, type) {
-    const progressData = JSON.parse(localStorage.getItem('vidLinkProgress'));
-    const item = progressData[id];
-    
-    if (type === 'tv') {
-        showPlayer('tv', id, item.last_season_watched, item.last_episode_watched);
-    } else {
-        showPlayer('movie', id);
-    }
-}
-
-function updateContinueWatchingSection() {
-    const continueWatchingRow = document.querySelector('.content-row:first-child');
-    if (continueWatchingRow) {
-        const newContinueWatchingHTML = createContinueWatchingSection();
-        if (newContinueWatchingHTML) {
-            continueWatchingRow.outerHTML = newContinueWatchingHTML;
-            initializeSliders();
-        } else {
-            continueWatchingRow.remove();
-        }
-    } else if (document.querySelector('.content-sections')) {
-        const newContinueWatchingHTML = createContinueWatchingSection();
-        if (newContinueWatchingHTML) {
-            const contentSections = document.querySelector('.content-sections');
-            contentSections.insertAdjacentHTML('afterbegin', newContinueWatchingHTML);
-            initializeSliders();
-        }
-    }
-}
-
-async function loadRecommendations() {
-    const progressData = localStorage.getItem('vidLinkProgress');
-    if (!progressData) return '';
-
-    const progress = JSON.parse(progressData);
-    const lastWatched = Object.values(progress)
-        .sort((a, b) => b.last_updated - a.last_updated)[0];
-
-    if (!lastWatched) return '';
-
-    try {
-        const response = await fetch(
-            `${BASE_URL}/${lastWatched.type}/${lastWatched.id}/recommendations?api_key=${API_KEY}`
-        );
-        const data = await response.json();
-        
-        if (data.results.length === 0) return '';
-
-        return `
-            <div class="content-row">
-                <h2>Because You Watched ${lastWatched.title}</h2>
-                <div class="slider-wrapper">
-                    <button class="slider-controls slider-prev" onclick="slideContent(this, -1)">❮</button>
-                    <div class="content-slider">
-                        ${data.results.map(item => createContentCard(item).outerHTML).join('')}
+            return (
+                <div className="space-y-4">
+                    <h2 className="text-2xl font-bold">{title}</h2>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                        {items.map((item, index) => (
+                            <MovieCard key={item.id} item={item} type={type} />
+                        ))}
+                        {loading && (
+                            [...Array(5)].map((_, i) => (
+                                <div key={`skeleton-${i}`} className="loading-skeleton aspect-[2/3] rounded-xl" />
+                            ))
+                        )}
+                        <div ref={containerRef} style={{ gridColumn: '1/-1', height: '10px' }} />
                     </div>
-                    <button class="slider-controls slider-next" onclick="slideContent(this, 1)">❯</button>
                 </div>
-            </div>
-        `;
-    } catch (error) {
-        console.error('Error loading recommendations:', error);
-        return '';
-    }
-}
+            );
+        }
 
-async function loadGenrePage() {
-    try {
-        const [movieGenres, tvGenres] = await Promise.all([
-            fetch(`${BASE_URL}/genre/movie/list?api_key=${API_KEY}`).then(r => r.json()),
-            fetch(`${BASE_URL}/genre/tv/list?api_key=${API_KEY}`).then(r => r.json())
-        ]);
+        function ContentList({ type }) {
+            const [items, setItems] = useState([]);
+            const [page, setPage] = useState(1);
+            const [loading, setLoading] = useState(true);
 
-        const genreCardsHTML = `
-            <div class="page-content genres-page">
-                <div class="genre-type-tabs">
-                    <button class="genre-tab active" data-type="movies">Movies</button>
-                    <button class="genre-tab" data-type="tv">TV Shows</button>
+            useEffect(() => {
+                axios.get(`${BASE_URL}/${type}/popular?api_key=${API_KEY}&page=${page}`)
+                    .then(response => {
+                        if (page === 1) {
+                            setItems(response.data.results);
+                        } else {
+                            setItems(prev => [...prev, ...response.data.results]);
+                        }
+                        setLoading(false);
+                    });
+            }, [type, page]);
+
+            if (loading && page === 1) {
+                return (
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                        {[...Array(20)].map((_, i) => (
+                            <div key={i} className="aspect-[2/3] rounded-xl loading-skeleton" />
+                        ))}
+                    </div>
+                );
+            }
+
+            return (
+                <div className="space-y-8">
+                    <h1 className="text-4xl font-bold text-gradient-animated">
+                        {type === 'movie' ? 'Movies' : 'TV Shows'}
+                    </h1>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                        {items.map(item => (
+                            <MovieCard 
+                                key={item.id} 
+                                item={item} 
+                                type={type}
+                            />
+                        ))}
+                    </div>
+
+                    <div className="mt-12 text-center">
+                        <button 
+                            onClick={() => setPage(prev => prev + 1)}
+                            className="px-8 py-3 rounded-full bg-gradient-to-r from-[#00f2fe] to-[#4facfe] text-white font-semibold hover:shadow-lg hover:shadow-[#4facfe]/20 transition-all duration-300 transform hover:scale-105"
+                        >
+                            Load More
+                        </button>
+                    </div>
                 </div>
-                <div class="genres-container">
-                    <div class="genre-section movies active" id="movies-genres">
-                        <div class="genres-grid">
-                            ${movieGenres.genres.map(genre => `
-                                <div class="genre-card" onclick="showGenreContent(${genre.id}, '${genre.name}', 'movie')">
-                                    <h3>${genre.name}</h3>
-                                    <div class="genre-count">Movies</div>
+            );
+        }
+
+        function MovieList() {
+            return <ContentList type="movie" />;
+        }
+
+        function TVShowList() {
+            return <ContentList type="tv" />;
+        }
+
+        function MovieDetails() {
+            const { id } = useParams();
+            const [movie, setMovie] = useState(null);
+            const [cast, setCast] = useState([]);
+            const [similar, setSimilar] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [showPlayer, setShowPlayer] = useState(false);
+
+            const formatRating = (rating) => {
+                return rating ? rating.toFixed(1) : 'N/A';
+            };
+
+            useEffect(() => {
+                Promise.all([
+                    axios.get(`${BASE_URL}/movie/${id}?api_key=${API_KEY}`),
+                    axios.get(`${BASE_URL}/movie/${id}/credits?api_key=${API_KEY}`),
+                    axios.get(`${BASE_URL}/movie/${id}/similar?api_key=${API_KEY}`)
+                ]).then(([movieRes, creditsRes, similarRes]) => {
+                    setMovie(movieRes.data);
+                    setCast(creditsRes.data.cast.slice(0, 10));
+                    setSimilar(similarRes.data.results.slice(0, 6));
+                    setLoading(false);
+                });
+            }, [id]);
+
+            if (loading || !movie) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center">
+                        <div className="loading-skeleton w-full max-w-6xl h-[70vh] rounded-xl" />
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-gray-900">
+                    <div className="relative">
+                        <div className="absolute inset-0 h-[80vh]">
+                            <img 
+                                src={`https://image.tmdb.org/t/p/original${movie.backdrop_path}`}
+                                alt={movie.title}
+                                className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/80" />
+                            <div className="absolute inset-0 bg-gradient-to-r from-gray-900 via-gray-900/60" />
+                        </div>
+
+                        <div className="relative pt-40 pb-20 px-4 container mx-auto">
+                            <div className="flex flex-col md:flex-row gap-12">
+                                <div className="w-full md:w-1/3">
+                                    <div className="sticky top-24">
+                                        <div className="premium-card rounded-xl overflow-hidden">
+                                            <img 
+                                                src={`${IMG_BASE_URL}${movie.poster_path}`}
+                                                alt={movie.title}
+                                                className="w-full rounded-xl shadow-2xl hover:scale-105 transition-transform duration-500"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-4 mt-6">
+                                            <button 
+                                                onClick={() => setShowPlayer(true)}
+                                                className="w-full py-4 text-lg font-semibold bg-gradient-to-r from-[#00f2fe] to-[#4facfe] text-white rounded-xl hover:shadow-lg hover:shadow-[#4facfe]/20 transition-all duration-300 hover:scale-105 flex items-center justify-center gap-2"
+                                            >
+                                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                                Play Movie
+                                            </button>
+                                            <WatchlistButton 
+                                                item={{...movie, media_type: 'movie'}} 
+                                                className="w-full py-4 text-lg font-semibold premium-glass rounded-xl hover:scale-105 transition-all duration-300" 
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
-                            `).join('')}
+
+                                <div className="w-full md:w-2/3 text-white space-y-8">
+                                    <div className="space-y-4">
+                                        <h1 className="text-6xl font-bold text-gradient-animated leading-tight">
+                                            {movie.title}
+                                        </h1>
+                                        {getWatchProgress(movie.id, 'movie') !== null && (
+                                            <div className="flex items-center gap-4">
+                                                <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+                                                    <div 
+                                                        className="h-full bg-gradient-to-r from-[#00f2fe] to-[#4facfe]"
+                                                        style={{ width: `${getWatchProgress(movie.id, 'movie')}%` }}
+                                                    />
+                                                </div>
+                                                <span className="text-gray-400">
+                                                    {Math.round(getWatchProgress(movie.id, 'movie'))}% watched
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <p className="text-xl text-gray-300 leading-relaxed">{movie.overview}</p>
+
+                                    <div className="space-y-4">
+                                        <h3 className="text-2xl font-semibold">Genres</h3>
+                                        <div className="flex flex-wrap gap-3">
+                                            {movie.genres.map(genre => (
+                                                <span 
+                                                    key={genre.id}
+                                                    className="px-6 py-3 rounded-full premium-glass text-sm font-medium hover:scale-110 transition-transform duration-300"
+                                                >
+                                                    {genre.name}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-6">
+                                        <h3 className="text-2xl font-semibold">Cast</h3>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                                            {cast.map(actor => (
+                                                <div key={actor.id} className="premium-card rounded-xl overflow-hidden group">
+                                                    <div className="relative aspect-[2/3]">
+                                                        <img 
+                                                            src={actor.profile_path 
+                                                                ? `${IMG_BASE_URL}${actor.profile_path}`
+                                                                : 'placeholder-image.jpg'
+                                                            }
+                                                            alt={actor.name}
+                                                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                                                        />
+                                                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                                            <div className="absolute bottom-0 p-4 w-full">
+                                                                <p className="font-medium text-white">{actor.name}</p>
+                                                                <p className="text-sm text-gray-400">{actor.character}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {similar.length > 0 && (
+                                        <div className="space-y-6">
+                                            <h3 className="text-2xl font-semibold">Similar Movies</h3>
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-6">
+                                                {similar.map(movie => (
+                                                    <MovieCard key={movie.id} item={movie} type="movie" />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="genre-section tv" id="tv-genres">
-                        <div class="genres-grid">
-                            ${tvGenres.genres.map(genre => `
-                                <div class="genre-card" onclick="showGenreContent(${genre.id}, '${genre.name}', 'tv')">
-                                    <h3>${genre.name}</h3>
-                                    <div class="genre-count">TV Shows</div>
+                    {showPlayer && (
+                        <VideoPlayer 
+                            type="movie"
+                            tmdbId={id}
+                            onClose={() => setShowPlayer(false)}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        function TVDetails() {
+            const { id } = useParams();
+            const [show, setShow] = useState(null);
+            const [selectedSeason, setSelectedSeason] = useState(1);
+            const [seasonDetails, setSeasonDetails] = useState(null);
+            const [cast, setCast] = useState([]);
+            const [similar, setSimilar] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [showPlayer, setShowPlayer] = useState(null);
+
+            const formatRating = (rating) => {
+                return rating ? rating.toFixed(1) : 'N/A';
+            };
+
+            useEffect(() => {
+                Promise.all([
+                    axios.get(`${BASE_URL}/tv/${id}?api_key=${API_KEY}`),
+                    axios.get(`${BASE_URL}/tv/${id}/credits?api_key=${API_KEY}`),
+                    axios.get(`${BASE_URL}/tv/${id}/similar?api_key=${API_KEY}`)
+                ]).then(([showRes, creditsRes, similarRes]) => {
+                    setShow(showRes.data);
+                    setCast(creditsRes.data.cast.slice(0, 10));
+                    setSimilar(similarRes.data.results.slice(0, 6));
+                    setLoading(false);
+                });
+            }, [id]);
+
+            useEffect(() => {
+                if (show && selectedSeason) {
+                    axios.get(`${BASE_URL}/tv/${id}/season/${selectedSeason}?api_key=${API_KEY}`)
+                        .then(response => setSeasonDetails(response.data));
+                }
+            }, [id, selectedSeason, show]);
+
+            if (loading || !show) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center">
+                        <div className="loading-skeleton w-full max-w-6xl h-[70vh] rounded-xl" />
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen">
+                    <div className="relative">
+                        <div className="absolute inset-0 h-[80vh]">
+                            <img 
+                                src={`https://image.tmdb.org/t/p/original${show.backdrop_path}`}
+                                alt={show.name}
+                                className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/80" />
+                            <div className="absolute inset-0 bg-gradient-to-r from-gray-900 via-gray-900/60" />
+                        </div>
+
+                        <div className="relative pt-40 pb-20 px-4 container mx-auto">
+                            <div className="flex flex-col md:flex-row gap-12">
+                                {/* Poster and Info */}
+                                <div className="w-full md:w-1/3">
+                                    <div className="sticky top-24 space-y-6">
+                                        <div className="premium-card rounded-xl overflow-hidden">
+                                            <img 
+                                                src={`${IMG_BASE_URL}${show.poster_path}`}
+                                                alt={show.name}
+                                                className="w-full rounded-xl shadow-2xl hover:scale-105 transition-transform duration-500"
+                                            />
+                                        </div>
+                                        <WatchlistButton 
+                                            item={{...show, media_type: 'tv'}} 
+                                            className="w-full py-4 text-lg font-semibold premium-glass rounded-xl hover:scale-105 transition-all duration-300" 
+                                        />
+                                        
+                                        {/* Show Info */}
+                                        <div className="premium-glass rounded-xl p-6 space-y-4">
+                                            <div className="space-y-2">
+                                                <h3 className="text-lg font-semibold">Status</h3>
+                                                <p className="text-gray-300">{show.status}</p>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <h3 className="text-lg font-semibold">Network</h3>
+                                                <div className="flex items-center gap-4">
+                                                    {show.networks && show.networks.map(network => (
+                                                        <img 
+                                                            key={network.id}
+                                                            src={`${IMG_BASE_URL}${network.logo_path}`}
+                                                            alt={network.name}
+                                                            className="h-8 object-contain"
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            `).join('')}
+
+                                {/* Content */}
+                                <div className="w-full md:w-2/3 text-white space-y-8">
+                                    <div className="space-y-4">
+                                        <h1 className="text-6xl font-bold text-gradient-animated leading-tight">
+                                            {show.name}
+                                        </h1>
+                                        <div className="flex flex-wrap items-center gap-4 text-lg">
+                                            <span className="px-4 py-2 rounded-full premium-glass">
+                                                {new Date(show.first_air_date).getFullYear()}
+                                            </span>
+                                            <span className="px-4 py-2 rounded-full premium-glass">
+                                                {show.number_of_seasons} Seasons
+                                            </span>
+                                            <span className="flex items-center px-4 py-2 rounded-full premium-glass text-yellow-400">
+                                                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                                </svg>
+                                                {formatRating(show.vote_average)}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <p className="text-xl text-gray-300 leading-relaxed">{show.overview}</p>
+
+                                    {/* Seasons selector */}
+                                    <div className="space-y-4">
+                                        <h3 className="text-2xl font-semibold">Seasons</h3>
+                                        <div className="flex space-x-4 overflow-x-auto pb-4 premium-scrollbar">
+                                            {Array.from({ length: show.number_of_seasons }, (_, i) => i + 1).map(season => (
+                                                <button
+                                                    key={season}
+                                                    onClick={() => setSelectedSeason(season)}
+                                                    className={`px-8 py-4 rounded-xl transition-all duration-300 ${
+                                                        selectedSeason === season
+                                                            ? 'bg-gradient-to-r from-[#00f2fe] to-[#4facfe] text-white shadow-lg shadow-[#4facfe]/20'
+                                                            : 'premium-glass text-gray-400 hover:text-white'
+                                                    }`}
+                                                >
+                                                    Season {season}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Episodes list */}
+                                    {seasonDetails && (
+                                        <div className="space-y-6">
+                                            <h3 className="text-2xl font-semibold">Episodes</h3>
+                                            <div className="grid gap-6">
+                                                {seasonDetails.episodes.map(episode => (
+                                                    <div key={episode.id} className="premium-glass rounded-xl p-6 hover:scale-[1.02] transition-transform duration-300">
+                                                        <div className="flex gap-6">
+                                                            <div className="relative">
+                                                                {episode.still_path ? (
+                                                                    <img 
+                                                                        src={`${IMG_BASE_URL}${episode.still_path}`}
+                                                                        alt={episode.name}
+                                                                        className="w-64 h-36 object-cover rounded-lg"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="w-64 h-36 bg-gray-800 rounded-lg flex items-center justify-center">
+                                                                        <span className="text-gray-500">No Preview</span>
+                                                                    </div>
+                                                                )}
+                                                                {getEpisodeProgress(show.id, selectedSeason, episode.episode_number) && (
+                                                                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800">
+                                                                        <div 
+                                                                            className="h-full bg-gradient-to-r from-[#00f2fe] to-[#4facfe]"
+                                                                            style={{ 
+                                                                                width: `${getEpisodeProgress(show.id, selectedSeason, episode.episode_number)}%` 
+                                                                            }}
+                                                                        />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex-1 space-y-3">
+                                                                <div className="flex items-center justify-between mb-4">
+                                                                    <h3 className="text-xl font-semibold">
+                                                                        {episode.episode_number}. {episode.name}
+                                                                    </h3>
+                                                                    <div className="flex items-center gap-4">
+                                                                        {getEpisodeProgress(show.id, selectedSeason, episode.episode_number) !== null && (
+                                                                            <span className="text-sm text-gray-400">
+                                                                                {Math.round(getEpisodeProgress(show.id, selectedSeason, episode.episode_number))}% watched
+                                                                            </span>
+                                                                        )}
+                                                                        <button 
+                                                                            onClick={() => setShowPlayer({ season: selectedSeason, episode: episode.episode_number })}
+                                                                            className="px-4 py-2 rounded-full bg-gradient-to-r from-[#00f2fe] to-[#4facfe] text-white font-semibold hover:shadow-lg hover:shadow-[#4facfe]/20 transition-all duration-300 transform hover:scale-105"
+                                                                        >
+                                                                            <span className="flex items-center space-x-2">
+                                                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                                                </svg>
+                                                                                <span>Play</span>
+                                                                            </span>
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                                <p className="text-gray-300">{episode.overview || "No description available."}</p>
+                                                                <div className="text-sm text-gray-400">
+                                                                    Air Date: {new Date(episode.air_date).toLocaleDateString()}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Similar Shows */}
+                                    {similar.length > 0 && (
+                                        <div className="space-y-6">
+                                            <h3 className="text-2xl font-semibold">Similar Shows</h3>
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-6">
+                                                {similar.map(show => (
+                                                    <MovieCard key={show.id} item={show} type="tv" />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </div>
+                    {showPlayer && (
+                        <VideoPlayer 
+                            type="tv"
+                            tmdbId={id}
+                            season={showPlayer.season}
+                            episode={showPlayer.episode}
+                            onClose={() => setShowPlayer(null)}
+                        />
+                    )}
                 </div>
-            </div>
-        `;
+            );
+        }
 
-        DOM.mainContent.innerHTML = genreCardsHTML;
+        function Footer() {
+            return (
+                <footer className="bg-[#1a1a1a] text-gray-300 py-16">
+                    <div className="container mx-auto px-4">
+                        <div className="flex flex-wrap justify-between">
+                            <div className="w-full md:w-1/3 mb-8 md:mb-0">
+                                <h3 className="text-3xl font-bold gradient-text mb-4">Hexa</h3>
+                                <p className="text-gray-400">Your premium destination for the latest movies and TV shows. Stream anywhere, anytime.</p>
+                            </div>
+                            <div className="w-full md:w-1/3 mb-8 md:mb-0">
+                                <h4 className="text-xl font-semibold mb-4">Quick Links</h4>
+                                <ul className="space-y-2">
+                                    <li><Link to="/" className="text-gray-400 hover:text-[#4facfe] transition duration-300">Home</Link></li>
+                                    <li><Link to="/movies" className="text-gray-400 hover:text-[#4facfe] transition duration-300">Movies</Link></li>
+                                    <li><Link to="/tv" className="text-gray-400 hover:text-[#4facfe] transition duration-300">TV Shows</Link></li>
+                                </ul>
+                            </div>
+                            <div className="w-full md:w-1/3">
+                                <h4 className="text-xl font-semibold mb-4">Connect With Us</h4>
+                                <div className="flex space-x-4">
+                                    {/* Social media icons here */}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-12 pt-8 border-t border-gray-800 text-center text-gray-500">
+                            <p>&copy; 2024 Hexa. All rights reserved.</p>
+                        </div>
+                    </div>
+                </footer>
+            );
+        }
 
-        // Add tab switching functionality
-        document.querySelectorAll('.genre-tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                document.querySelectorAll('.genre-tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.genre-section').forEach(s => s.classList.remove('active'));
+        function MovieCard({ item, type }) {
+            const [isHovered, setIsHovered] = useState(false);
+            
+            // Reference to existing media type logic
+            let mediaType;
+            if (type === 'both') {
+                mediaType = item.first_air_date || item.episode_run_time ? 'tv' : 'movie';
+            } else {
+                mediaType = type || item.media_type || (item.first_air_date ? 'tv' : 'movie');
+            }
+
+            const path = `/${mediaType}/${item.id}`;
+            const formatRating = (rating) => rating ? rating.toFixed(1) : 'N/A';
+
+            // Get watch progress
+            const progress = JSON.parse(localStorage.getItem('vidLinkProgress') || '{}');
+            const itemProgress = progress[item.id];
+            
+            let progressPercentage = null;
+            if (itemProgress) {
+                if (mediaType === 'movie') {
+                    progressPercentage = (itemProgress.progress.watched / itemProgress.progress.duration) * 100;
+                } else if (mediaType === 'tv' && itemProgress.show_progress) {
+                    const lastEpisodeKey = `s${itemProgress.last_season_watched}e${itemProgress.last_episode_watched}`;
+                    const lastEpisodeProgress = itemProgress.show_progress[lastEpisodeKey];
+                    if (lastEpisodeProgress) {
+                        progressPercentage = (lastEpisodeProgress.progress.watched / lastEpisodeProgress.progress.duration) * 100;
+                    }
+                }
+            }
+
+            return (
+                <Link 
+                    to={path}
+                    className="group relative block overflow-hidden rounded-xl transition-transform duration-300 hover:-translate-y-2"
+                    onMouseEnter={() => setIsHovered(true)}
+                    onMouseLeave={() => setIsHovered(false)}
+                >
+                    <div className="relative aspect-[2/3]">
+                        <img 
+                            src={`${IMG_BASE_URL}${item.poster_path}`}
+                            alt={item.title || item.name}
+                            className="w-full h-full object-cover rounded-xl transition-transform duration-500 group-hover:scale-105"
+                        />
+
+                        <div className={`absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent transition-opacity duration-300 ${
+                            isHovered ? 'opacity-100' : 'opacity-0'
+                        }`} />
+
+                        <div className={`absolute inset-0 p-4 flex flex-col justify-end transition-all duration-300 ${
+                            isHovered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+                        }`}>
+                            <div className="space-y-2">
+                                <h3 className="text-lg font-bold text-white line-clamp-2">
+                                    {item.title || item.name}
+                                </h3>
+                                
+                                <div className="flex items-center gap-3 text-sm text-gray-300">
+                                    <span className="flex items-center gap-1">
+                                        <svg className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                        </svg>
+                                        {formatRating(item.vote_average)}
+                                    </span>
+                                    <span>•</span>
+                                    <span>{new Date(item.release_date || item.first_air_date).getFullYear()}</span>
+                                    <span>•</span>
+                                    <span className="uppercase text-xs font-medium px-2 py-1 rounded-md bg-white/20">
+                                        {mediaType}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {progressPercentage !== null && (
+                            <div className="absolute bottom-0 left-0 right-0">
+                                <div className="relative h-1 bg-gray-800/80">
+                                    <div 
+                                        className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#00f2fe] to-[#4facfe]"
+                                        style={{ width: `${progressPercentage}%` }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </Link>
+            );
+        }
+
+        function WatchlistButton({ item, className = "" }) {
+            const [inWatchlist, setInWatchlist] = useState(false);
+            const { watchlist, updateWatchlist } = React.useContext(WatchlistContext);
+
+            useEffect(() => {
+                setInWatchlist(watchlist.some(i => i.id === item.id));
+            }, [item.id, watchlist]);
+
+            const toggleWatchlist = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 
-                tab.classList.add('active');
-                const type = tab.dataset.type;
-                document.getElementById(`${type}-genres`).classList.add('active');
-            });
-        });
-
-    } catch (error) {
-        console.error('Error loading genres:', error);
-        DOM.mainContent.innerHTML = `
-            <div class="page-content">
-                <div class="empty-results">Error loading genres. Please try again.</div>
-            </div>
-        `;
-    }
-}
-
-async function showGenreContent(genreId, genreName, mediaType) {
-    currentSection = 'genre';
-    currentPage = 1;
-    currentMediaType = mediaType;
-    
-    try {
-        DOM.mainContent.innerHTML = `
-            <div class="page-content">
-                <div class="page-header" data-genre-id="${genreId}">
-                    <h1>${genreName}</h1>
-                    <button class="back-btn" onclick="loadGenrePage()">
-                        <span>←</span> Back to Genres
-                    </button>
-                </div>
-                <div class="content-grid"></div>
-            </div>
-        `;
-
-        await loadGenreContent(genreId, genreName);
-    } catch (error) {
-        console.error('Error loading genre content:', error);
-    }
-}
-
-async function loadGenreContent(genreId, genreName) {
-    if (isLoading) return;
-    isLoading = true;
-
-    try {
-        const contentGrid = document.querySelector('.content-grid');
-        
-        if (currentMediaType === 'movie') {
-            await loadMovieGenreContent(genreId, contentGrid);
-        } else {
-            await loadTVGenreContent(genreId, contentGrid);
-        }
-
-        isLoading = false;
-    } catch (error) {
-        console.error('Error loading genre content:', error);
-        isLoading = false;
-    }
-}
-
-async function loadMovieGenreContent(genreId, contentGrid) {
-    try {
-        const response = await fetch(
-            `${BASE_URL}/discover/movie?api_key=${API_KEY}&with_genres=${genreId}&page=${currentPage}`
-        );
-        const data = await response.json();
-        
-        if (data.results.length === 0) {
-            if (currentPage === 1) {
-                contentGrid.innerHTML = '<div class="empty-results">No movies found in this genre</div>';
-            }
-            return;
-        }
-
-        data.results.forEach(item => {
-            item.media_type = 'movie';
-            const element = createContentCard(item);
-            contentGrid.appendChild(element);
-        });
-
-        currentPage++;
-    } catch (error) {
-        console.error('Error loading movie genre content:', error);
-        if (currentPage === 1) {
-            contentGrid.innerHTML = '<div class="empty-results">Error loading movies</div>';
-        }
-    }
-}
-
-async function loadTVGenreContent(genreId, contentGrid) {
-    try {
-        const response = await fetch(
-            `${BASE_URL}/discover/tv?api_key=${API_KEY}&with_genres=${genreId}&page=${currentPage}`
-        );
-        const data = await response.json();
-        
-        if (data.results.length === 0) {
-            if (currentPage === 1) {
-                contentGrid.innerHTML = '<div class="empty-results">No TV shows found in this genre</div>';
-            }
-            return;
-        }
-
-        data.results.forEach(item => {
-            item.media_type = 'tv';
-            const element = createContentCard(item);
-            contentGrid.appendChild(element);
-        });
-
-        currentPage++;
-    } catch (error) {
-        console.error('Error loading TV genre content:', error);
-        if (currentPage === 1) {
-            contentGrid.innerHTML = '<div class="empty-results">Error loading TV shows</div>';
-        }
-    }
-}
-
-// Lazy loading images
-function lazyLoadImages() {
-    const images = document.querySelectorAll('img[data-src]');
-    const imageObserver = new IntersectionObserver((entries, observer) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                const img = entry.target;
-                img.src = img.dataset.src;
-                img.removeAttribute('data-src');
-                observer.unobserve(img);
-            }
-        });
-    });
-
-    images.forEach(img => imageObserver.observe(img));
-}
-
-// Content preloading
-function preloadContent(page) {
-    if (navigator.connection && navigator.connection.saveData) {
-        return; // Respect data saver mode
-    }
-    
-    const preloadPages = {
-        home: ['movies', 'series'],
-        movies: ['genres'],
-        series: ['genres']
-    };
-
-    if (preloadPages[page]) {
-        preloadPages[page].forEach(nextPage => {
-            const link = document.createElement('link');
-            link.rel = 'prefetch';
-            link.href = `api/${nextPage}.json`;
-            document.head.appendChild(link);
-        });
-    }
-}
-
-function initKeyboardNavigation() {
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && DOM.modal.style.display !== 'none') {
-            closeModal();
-        }
-        
-        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-            const sliders = document.querySelectorAll('.content-slider'); 
-            sliders.forEach(slider => {
-                if (isElementInViewport(slider)) {
-                    slideContent(slider.parentElement.querySelector('.slider-controls'), 
-                        e.key === 'ArrowLeft' ? -1 : 1);
+                let newWatchlist;
+                if (inWatchlist) {
+                    newWatchlist = watchlist.filter(i => i.id !== item.id);
+                } else {
+                    newWatchlist = [...watchlist, { ...item }];
                 }
-            });
+                
+                updateWatchlist(newWatchlist);
+                setInWatchlist(!inWatchlist);
+            };
+
+            return (
+                <button
+                    onClick={toggleWatchlist}
+                    className={`p-2 rounded-full transition-all duration-300 ${
+                        inWatchlist ? 'bg-[#4facfe] text-white' : 'bg-gray-800/80 text-gray-400'
+                    } hover:scale-110 ${className}`}
+                >
+                    <svg 
+                        className="w-6 h-6" 
+                        fill="currentColor" 
+                        viewBox="0 0 24 24" 
+                        strokeWidth="2"
+                    >
+                        {inWatchlist ? (
+                            // Filled bookmark icon
+                            <path d="M5 5c0-1.1.9-2 2-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                        ) : (
+                            // Outline bookmark icon
+                            <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3.5L19 21V5c0-1.1-.9-2-2-2zm0 15l-5-2.5L7 18V5h10v13z" />
+                        )}
+                    </svg>
+                </button>
+            );
         }
-    });
-}
 
-// Add to the top of script.js after other constants
-const WATCHLIST_KEY = 'hexa_watchlist';
+        function Watchlist() {
+            const { watchlist } = React.useContext(WatchlistContext);
 
-function getWatchlist() {
-    const watchlist = localStorage.getItem(WATCHLIST_KEY);
-    return watchlist ? JSON.parse(watchlist) : [];
-}
+            return (
+                <div className="pt-4">
+                    <h2 className="text-4xl font-bold mb-8 text-gradient-animated">My Watchlist</h2>
+                    {watchlist.length === 0 ? (
+                        <div className="text-center py-16">
+                            <h3 className="text-2xl text-gray-400 mb-4">Your watchlist is empty</h3>
+                            <Link to="/" className="text-[#4facfe] hover:text-white transition-colors duration-300">
+                                Browse content →
+                            </Link>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                            {watchlist.map(item => (
+                                <MovieCard key={item.id} item={item} type={item.media_type} />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        }
 
-function addToWatchlist(item) {
-    const watchlist = getWatchlist();
-    if (!watchlist.some(i => i.id === item.id)) {
-        const watchlistItem = {
-            id: item.id,
-            title: item.title || item.name,
-            poster_path: item.poster_path,
-            media_type: item.media_type || (item.first_air_date ? 'tv' : 'movie'),
-            added_date: Date.now(),
-            overview: item.overview,
-            vote_average: item.vote_average
+        function VideoPlayer({ type, tmdbId, season, episode, onClose }) {
+            useEffect(() => {
+                const handleMessage = (event) => {
+                    if (event.origin !== 'https://vidlink.pro') {
+                        return;
+                    }
+
+                    if (event.data && event.data.type === 'MEDIA_DATA') {
+                        const mediaData = JSON.parse(localStorage.getItem('vidLinkProgress') || '{}');
+                        const newMediaData = event.data.data;
+                        localStorage.setItem('vidLinkProgress', JSON.stringify({
+                            ...mediaData,
+                            ...newMediaData
+                        }));
+                    }
+                };
+
+                window.addEventListener('message', handleMessage);
+                return () => window.removeEventListener('message', handleMessage);
+            }, []);
+
+            const iframeSrc = type === 'movie' 
+                ? `https://vidlink.pro/movie/${tmdbId}?primaryColor=4facfe&secondaryColor=00f2fe&iconColor=4facfe&title=true&poster=true&autoplay=true`
+                : `https://vidlink.pro/tv/${tmdbId}/${season}/${episode}?primaryColor=4facfe&secondaryColor=00f2fe&iconColor=4facfe&title=true&poster=true&autoplay=true&nextbutton=true`;
+
+            return (
+                <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center">
+                    <div className="relative w-full h-full max-w-7xl max-h-[80vh] mx-4">
+                        <button 
+                            onClick={onClose}
+                            className="absolute -top-12 right-0 text-white hover:text-[#4facfe] transition-colors"
+                        >
+                            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                        <iframe 
+                            src={iframeSrc}
+                            className="w-full h-full rounded-xl"
+                            frameBorder="0" 
+                            allowFullScreen
+                        />
+                    </div>
+                </div>
+            );
+        }
+
+        function ContinueWatching() {
+            const [items, setItems] = useState([]);
+            const [sortBy, setSortBy] = useState('recent');
+            const [filter, setFilter] = useState('all');
+
+            useEffect(() => {
+                const progress = JSON.parse(localStorage.getItem('vidLinkProgress') || '{}');
+                let watchedItems = Object.entries(progress)
+                    .map(([id, data]) => ({
+                        ...data,
+                        progressPercentage: data.type === 'movie' 
+                            ? (data.progress.watched / data.progress.duration) * 100
+                            : data.show_progress && data.last_season_watched && data.last_episode_watched
+                                ? ((data.show_progress[`s${data.last_season_watched}e${data.last_episode_watched}`] || {}).progress || {}).watched /
+                                  ((data.show_progress[`s${data.last_season_watched}e${data.last_episode_watched}`] || {}).progress || {}).duration * 100
+                                : 0
+                    }))
+                    .filter(item => {
+                        if (filter === 'movies') return item.type === 'movie';
+                        if (filter === 'shows') return item.type === 'tv';
+                        return true;
+                    })
+                    .filter(item => item.progress && item.progress.watched > 0);
+
+                watchedItems.sort((a, b) => {
+                    if (sortBy === 'recent') {
+                        return b.last_updated - a.last_updated;
+                    }
+                    return b.progressPercentage - a.progressPercentage;
+                });
+
+                setItems(watchedItems);
+            }, [sortBy, filter]);
+
+            return (
+                <div className="space-y-8">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                        <h1 className="text-4xl font-bold text-gradient-animated">Continue Watching</h1>
+                        <div className="flex gap-4">
+                            <select
+                                value={filter}
+                                onChange={(e) => setFilter(e.target.value)}
+                                className="premium-glass rounded-xl px-6 py-3 outline-none cursor-pointer"
+                            >
+                                <option value="all">All Content</option>
+                                <option value="movies">Movies</option>
+                                <option value="shows">TV Shows</option>
+                            </select>
+                            <select
+                                value={sortBy}
+                                onChange={(e) => setSortBy(e.target.value)}
+                                className="premium-glass rounded-xl px-6 py-3 outline-none cursor-pointer"
+                            >
+                                <option value="recent">Recently Watched</option>
+                                <option value="progress">Progress</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {items.length === 0 ? (
+                        <div className="text-center py-16">
+                            <h3 className="text-2xl text-gray-400 mb-4">No items in continue watching</h3>
+                            <Link to="/" className="text-[#4facfe] hover:text-white transition-colors duration-300">
+                                Browse content →
+                            </Link>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                            {items.map(item => (
+                                <MovieCard 
+                                    key={item.id} 
+                                    item={{
+                                        id: item.id,
+                                        title: item.title,
+                                        name: item.title,
+                                        poster_path: item.poster_path,
+                                        media_type: item.type
+                                    }}
+                                    type={item.type}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function Search() {
+            const [query, setQuery] = useState('');
+            const [results, setResults] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [selectedType, setSelectedType] = useState('all');
+            const [page, setPage] = useState(1);
+            const [hasMore, setHasMore] = useState(true);
+            const location = ReactRouterDOM.useLocation();
+            const observer = useRef();
+            
+            const lastElementRef = useCallback(node => {
+                if (loading) return;
+                if (observer.current) observer.current.disconnect();
+                observer.current = new IntersectionObserver(entries => {
+                    if (entries[0].isIntersecting && hasMore) {
+                        setPage(prevPage => prevPage + 1);
+                    }
+                });
+                if (node) observer.current.observe(node);
+            }, [loading, hasMore]);
+
+            useEffect(() => {
+                const params = new URLSearchParams(location.search);
+                const searchQuery = params.get('q');
+                if (searchQuery) {
+                    setQuery(searchQuery);
+                    setPage(1);
+                    setResults([]);
+                    performSearch(searchQuery, 1, true);
+                }
+            }, [location.search, selectedType]);
+
+            useEffect(() => {
+                if (page > 1 && query.length >= 2) {
+                    performSearch(query, page, false);
+                }
+            }, [page]);
+
+            const performSearch = (searchQuery, pageNum, reset) => {
+                setLoading(true);
+                const searchEndpoint = selectedType === 'all' 
+                    ? `${BASE_URL}/search/multi?api_key=${API_KEY}&query=${encodeURIComponent(searchQuery)}&page=${pageNum}`
+                    : `${BASE_URL}/search/${selectedType}?api_key=${API_KEY}&query=${encodeURIComponent(searchQuery)}&page=${pageNum}`;
+
+                axios.get(searchEndpoint)
+                    .then(response => {
+                        const filteredResults = response.data.results.filter(item => item.poster_path);
+                        setResults(prev => reset ? filteredResults : [...prev, ...filteredResults]);
+                        setHasMore(response.data.page < response.data.total_pages);
+                    })
+                    .finally(() => setLoading(false));
+            };
+
+            return (
+                <div className="space-y-8">
+                    <div className="space-y-4">
+                        <div className="flex gap-4">
+                            <div className="flex-1 premium-glass rounded-xl overflow-hidden">
+                                <input
+                                    type="text"
+                                    value={query}
+                                    onChange={(e) => {
+                                        setQuery(e.target.value);
+                                        setPage(1);
+                                        setResults([]);
+                                        if (e.target.value.length >= 2) {
+                                            performSearch(e.target.value, 1, true);
+                                        }
+                                    }}
+                                    placeholder="Search movies, TV shows..."
+                                    className="w-full px-6 py-4 bg-transparent outline-none"
+                                />
+                            </div>
+                            <select
+                                value={selectedType}
+                                onChange={(e) => {
+                                    setSelectedType(e.target.value);
+                                    setPage(1);
+                                    setResults([]);
+                                    if (query.length >= 2) {
+                                        performSearch(query, 1, true);
+                                    }
+                                }}
+                                className="premium-glass rounded-xl px-6 py-4 outline-none cursor-pointer"
+                            >
+                                <option value="all">All</option>
+                                <option value="movie">Movies</option>
+                                <option value="tv">TV Shows</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {results.length > 0 && (
+                        <CategorySlider 
+                            title={`Search Results for "${query}"`}
+                            items={results}
+                            type={selectedType === 'all' ? 'both' : selectedType}
+                            loadMore={hasMore ? lastElementRef : null}
+                        />
+                    )}
+
+                    {loading && (
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                            {[...Array(5)].map((_, i) => (
+                                <div key={`skeleton-${i}`} className="loading-skeleton aspect-[2/3] rounded-xl" />
+                            ))}
+                        </div>
+                    )}
+
+                    {!loading && results.length === 0 && query.length >= 2 && (
+                        <div className="text-center text-gray-400 py-12">
+                            No results found
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function SearchBar() {
+            const [query, setQuery] = useState('');
+            const [results, setResults] = useState([]);
+            const [isOpen, setIsOpen] = useState(false);
+            const searchTimeout = useRef(null);
+            const searchRef = useRef(null);
+
+            useEffect(() => {
+                const handleClickOutside = (event) => {
+                    if (searchRef.current && !searchRef.current.contains(event.target)) {
+                        setIsOpen(false);
+                    }
+                };
+
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }, []);
+
+            useEffect(() => {
+                if (query.length < 2) {
+                    setResults([]);
+                    return;
+                }
+
+                if (searchTimeout.current) {
+                    clearTimeout(searchTimeout.current);
+                }
+
+                searchTimeout.current = setTimeout(() => {
+                    axios.get(`${BASE_URL}/search/multi?api_key=${API_KEY}&query=${encodeURIComponent(query)}`)
+                        .then(response => {
+                            setResults(response.data.results
+                                .filter(item => item.poster_path)
+                                .slice(0, 5));
+                        });
+                }, 300);
+
+                return () => {
+                    if (searchTimeout.current) {
+                        clearTimeout(searchTimeout.current);
+                    }
+                };
+            }, [query]);
+
+            return (
+                <div ref={searchRef} className="relative">
+                    <div className="premium-glass rounded-full overflow-hidden flex items-center">
+                        <input
+                            type="text"
+                            value={query}
+                            onChange={(e) => {
+                                setQuery(e.target.value);
+                                setIsOpen(true);
+                            }}
+                            placeholder="Search movies & TV shows..."
+                            className="w-64 px-6 py-2 bg-transparent outline-none"
+                        />
+                        <Link 
+                            to={query.length >= 2 ? `/search?q=${encodeURIComponent(query)}` : '/search'}
+                            className="px-4 hover:text-[#4facfe] transition-colors"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </Link>
+                    </div>
+
+                    {isOpen && results.length > 0 && (
+                        <div className="absolute top-full mt-2 w-full premium-glass rounded-xl overflow-hidden py-2">
+                            {results.map(item => (
+                                <Link
+                                    key={item.id}
+                                    to={`/${item.media_type}/${item.id}`}
+                                    className="flex items-center gap-3 px-4 py-2 hover:bg-white/10 transition-colors"
+                                    onClick={() => {
+                                        setIsOpen(false);
+                                        setQuery('');
+                                    }}
+                                >
+                                    <img 
+                                        src={`${IMG_BASE_URL}${item.poster_path}`}
+                                        alt={item.title || item.name}
+                                        className="w-10 h-15 object-cover rounded"
+                                    />
+                                    <div>
+                                        <div className="font-medium">{item.title || item.name}</div>
+                                        <div className="text-sm text-gray-400">
+                                            {item.media_type === 'movie' ? 'Movie' : 'TV Show'}
+                                        </div>
+                                    </div>
+                                </Link>
+                            ))}
+                            <div className="px-4 pt-2 mt-2 border-t border-white/10">
+                                <Link
+                                    to={`/search?q=${encodeURIComponent(query)}`}
+                                    className="block w-full text-center py-2 text-[#4facfe] hover:text-white transition-colors"
+                                    onClick={() => {
+                                        setIsOpen(false);
+                                    }}
+                                >
+                                    See all results →
+                                </Link>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const getWatchProgress = (mediaId) => {
+            const progress = JSON.parse(localStorage.getItem('vidLinkProgress') || '{}');
+            const mediaData = progress[mediaId];
+            
+            if (!mediaData) return null;
+
+            if (mediaData.type === 'movie') {
+                return {
+                    type: 'movie',
+                    progress: (mediaData.progress.watched / mediaData.progress.duration) * 100,
+                    watched: mediaData.progress.watched,
+                    duration: mediaData.progress.duration
+                };
+            } else {
+                const episodeKey = `s${mediaData.last_season_watched}e${mediaData.last_episode_watched}`;
+                const lastEpisode = mediaData.show_progress && mediaData.show_progress[episodeKey];
+                if (!lastEpisode) return null;
+
+                return {
+                    type: 'tv',
+                    progress: (lastEpisode.progress.watched / lastEpisode.progress.duration) * 100,
+                    season: mediaData.last_season_watched,
+                    episode: mediaData.last_episode_watched,
+                    watched: lastEpisode.progress.watched,
+                    duration: lastEpisode.progress.duration
+                };
+            }
         };
-        
-        watchlist.push(watchlistItem);
-        localStorage.setItem(WATCHLIST_KEY, JSON.stringify(watchlist));
-        showToast('Added to watchlist');
-        
-        // Update button state
-        const watchlistBtn = document.querySelector(`[data-id="${item.id}"] .watchlist-btn`);
-        if (watchlistBtn) {
-            watchlistBtn.classList.add('active');
-            watchlistBtn.innerHTML = '<span>✓</span>';
-        }
-    }
-}
 
-function removeFromWatchlist(id) {
-    const watchlist = getWatchlist();
-    const updatedWatchlist = watchlist.filter(item => item.id !== id);
-    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(updatedWatchlist));
-    showToast('Removed from watchlist');
-    
-    // Update UI
-    if (currentSection === 'watchlist') {
-        loadWatchlistContent();
-    } else {
-        // Update button state
-        const watchlistBtn = document.querySelector(`[data-id="${id}"] .watchlist-btn`);
-        if (watchlistBtn) {
-            watchlistBtn.classList.remove('active');
-            watchlistBtn.innerHTML = '<span>+</span>';
-        }
-    }
-}
+        const getEpisodeProgress = (showId, seasonNumber, episodeNumber) => {
+            const progress = JSON.parse(localStorage.getItem('vidLinkProgress') || '{}');
+            const showProgress = progress[showId];
+            
+            if (!showProgress || !showProgress.show_progress) return null;
+            
+            const episodeKey = `s${seasonNumber}e${episodeNumber}`;
+            const episodeProgress = showProgress.show_progress[episodeKey];
+            
+            if (!episodeProgress || !episodeProgress.progress) return null;
+            
+            return {
+                percentage: (episodeProgress.progress.watched / episodeProgress.progress.duration) * 100,
+                watched: episodeProgress.progress.watched,
+                duration: episodeProgress.progress.duration
+            };
+        };
 
-function isInWatchlist(id) {
-    const watchlist = getWatchlist();
-    return watchlist.some(item => item.id === id);
-}
-
-async function loadWatchlistContent() {
-    currentSection = 'watchlist';
-    const watchlist = getWatchlist();
-    
-    DOM.mainContent.innerHTML = `
-        <div class="page-content">
-            <div class="page-header">
-                <h1>My Watchlist</h1>
-            </div>
-            <div class="content-grid">
-                ${watchlist.length === 0 ? `
-                    <div class="empty-results">
-                        Your watchlist is empty. Add some movies or shows!
-                    </div>
-                ` : ''}
-            </div>
-        </div>
-    `;
-    
-    if (watchlist.length > 0) {
-        const contentGrid = DOM.mainContent.querySelector('.content-grid');
-        
-        // Fetch full details for each watchlist item
-        const items = await Promise.all(
-            watchlist.map(async (item) => {
-                try {
-                    const response = await fetch(
-                        `${BASE_URL}/${item.media_type}/${item.id}?api_key=${API_KEY}`
-                    );
-                    const fullDetails = await response.json();
-                    return {
-                        ...fullDetails,
-                        media_type: item.media_type
-                    };
-                } catch (error) {
-                    console.error('Error fetching item details:', error);
-                    return item; // Fallback to stored data if fetch fails
-                }
-            })
-        );
-
-        items.forEach(item => {
-            const element = createContentCard(item);
-            contentGrid.appendChild(element);
-        });
-    }
-}
-
-function showToast(message) {
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.textContent = message;
-    
-    const container = document.querySelector('.toast-container');
-    container.appendChild(toast);
-    
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
-}
-
-function createFilterSection(mediaType) {
-    return `
-        <div class="filter-section">
-            <select id="year-filter" class="filter-select">
-                <option value="">All Years</option>
-                ${generateYearOptions()}
-            </select>
-            <select id="rating-filter" class="filter-select">
-                <option value="">All Ratings</option>
-                <option value="7">7+ Rating</option>
-                <option value="8">8+ Rating</option>
-                <option value="9">9+ Rating</option>
-            </select>
-            <select id="sort-filter" class="filter-select">
-                <option value="popularity.desc">Popularity</option>
-                <option value="vote_average.desc">Rating</option>
-                <option value="release_date.desc">Release Date</option>
-            </select>
-        </div>
-    `;
-}
-
-function generateYearOptions() {
-    const currentYear = new Date().getFullYear();
-    let options = '';
-    for (let year = currentYear; year >= 1900; year--) {
-        options += `<option value="${year}">${year}</option>`;
-    }
-    return options;
-}
-
-async function applyFilters(mediaType) {
-    const year = document.getElementById('year-filter').value;
-    const rating = document.getElementById('rating-filter').value;
-    const sort = document.getElementById('sort-filter').value;
-    
-    let url = `${BASE_URL}/discover/${mediaType}?api_key=${API_KEY}&page=${currentPage}`;
-    
-    if (year) url += `&primary_release_year=${year}`;
-    if (rating) url += `&vote_average.gte=${rating}`;
-    if (sort) url += `&sort_by=${sort}`;
-    
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-        return data.results;
-    } catch (error) {
-        console.error('Error applying filters:', error);
-        return [];
-    }
-}
-
-async function loadGenreBasedRecommendations() {
-    const watchHistory = JSON.parse(localStorage.getItem('vidLinkProgress') || '{}');
-    if (Object.keys(watchHistory).length === 0) return '';
-
-    // Extract genres from watch history
-    const genres = new Map();
-    Object.values(watchHistory).forEach(item => {
-        item.genres?.forEach(genre => {
-            genres.set(genre.id, (genres.get(genre.id) || 0) + 1);
-        });
-    });
-
-    // Get top genre
-    const topGenre = Array.from(genres.entries())
-        .sort((a, b) => b[1] - a[1])[0];
-
-    if (!topGenre) return '';
-
-    try {
-        const response = await fetch(
-            `${BASE_URL}/discover/movie?api_key=${API_KEY}&with_genres=${topGenre[0]}&sort_by=popularity.desc`
-        );
-        const data = await response.json();
-
-        return `
-            <div class="content-row">
-                <h2>More Like What You Watch</h2>
-                <div class="slider-wrapper">
-                    <button class="slider-controls slider-prev" onclick="slideContent(this, -1)">❮</button>
-                    <div class="content-slider">
-                        ${data.results.map(item => createContentCard(item).outerHTML).join('')}
-                    </div>
-                    <button class="slider-controls slider-next" onclick="slideContent(this, 1)">❯</button>
-                </div>
-            </div>
-        `;
-    } catch (error) {
-        console.error('Error loading genre recommendations:', error);
-        return '';
-    }
-}
-
-async function loadWatchTimeBasedContent() {
-    const watchHistory = JSON.parse(localStorage.getItem('vidLinkProgress') || '{}');
-    const watchTimes = Object.values(watchHistory).map(item => new Date(item.last_updated));
-    
-    // Analyze watch times to determine peak viewing hours
-    const hours = watchTimes.map(time => time.getHours());
-    const avgHour = Math.round(hours.reduce((a, b) => a + b, 0) / hours.length);
-    
-    let timeSlot = 'evening';
-    if (avgHour < 12) timeSlot = 'morning';
-    else if (avgHour < 17) timeSlot = 'afternoon';
-    else if (avgHour < 20) timeSlot = 'evening';
-    else timeSlot = 'night';
-
-    try {
-        const response = await fetch(
-            `${BASE_URL}/discover/movie?api_key=${API_KEY}&sort_by=vote_average.desc&vote_count.gte=1000`
-        );
-        const data = await response.json();
-
-        return `
-            <div class="content-row">
-                <h2>Perfect for ${timeSlot} viewing</h2>
-                <div class="slider-wrapper">
-                    <button class="slider-controls slider-prev" onclick="slideContent(this, -1)">❮</button>
-                    <div class="content-slider">
-                        ${data.results.map(item => createContentCard(item).outerHTML).join('')}
-                    </div>
-                    <button class="slider-controls slider-next" onclick="slideContent(this, 1)">❯</button>
-                </div>
-            </div>
-        `;
-    } catch (error) {
-        console.error('Error loading time-based content:', error);
-        return '';
-    }
-}
-
-async function loadPopularInRegion() {
-    try {
-        const region = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const country = region.split('/')[0];
-        
-        const response = await fetch(
-            `${BASE_URL}/discover/movie?api_key=${API_KEY}&region=${country}&sort_by=popularity.desc`
-        );
-        const data = await response.json();
-
-        return `
-            <div class="content-row">
-                <h2>Popular in Your Region</h2>
-                <div class="slider-wrapper">
-                    <button class="slider-controls slider-prev" onclick="slideContent(this, -1)">❮</button>
-                    <div class="content-slider">
-                        ${data.results.map(item => createContentCard(item).outerHTML).join('')}
-                    </div>
-                    <button class="slider-controls slider-next" onclick="slideContent(this, 1)">❯</button>
-                </div>
-            </div>
-        `;
-    } catch (error) {
-        console.error('Error loading regional content:', error);
-        return '';
-    }
-}
-
-async function init() {
-    try {
-        document.querySelector('header').style.display = 'block';
-        await loadContent();
-    } catch (error) {
-        console.error('Error initializing app:', error);
-    }
-}
+        ReactDOM.render(<App />, document.getElementById('root'));  
